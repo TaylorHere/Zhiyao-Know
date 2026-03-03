@@ -4,8 +4,7 @@ WORKDIR /app
 
 ENV TZ=Asia/Shanghai \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PLAYWRIGHT_DOWNLOAD_HOST=https://registry.npmmirror.com/-/binary/playwright
+    PYTHONUNBUFFERED=1
 
 RUN set -eux; \
     if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
@@ -18,7 +17,9 @@ RUN set -eux; \
 
 COPY crawler_service/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt  -i https://pypi.tuna.tsinghua.edu.cn/simple
-RUN crawl4ai-setup
+RUN PLAYWRIGHT_DOWNLOAD_HOST=https://registry.npmmirror.com/-/binary/playwright \
+    PLAYWRIGHT_DOWNLOAD_BASE_URL=https://registry.npmmirror.com/-/binary/playwright \
+    crawl4ai-setup
 
 COPY crawler_service /app
 
