@@ -25,7 +25,7 @@ RUN set -ex \
     && sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources \
     && sed -i 's|security.debian.org/debian-security|mirrors.tuna.tsinghua.edu.cn/debian-security|g' /etc/apt/sources.list.d/debian.sources \
     # (C) 安装必要的系统库
-    && apt-get update \
+    && apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 update \
     && apt-get install -y --no-install-recommends --fix-missing \
     curl \
     ffmpeg \
@@ -45,7 +45,7 @@ COPY ../uv.lock /app/uv.lock
 
 # 如果网络还是不好，可以在后面添加 --index-url https://pypi.tuna.tsinghua.edu.cn/simple
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-dev --frozen --index-url https://pypi.tuna.tsinghua.edu.cn/simple
+    uv sync --no-dev --frozen --index-url https://mirrors.aliyun.com/pypi/simple
 
 # 激活虚拟环境并添加到PATH
 ENV PATH="/app/.venv/bin:$PATH"
