@@ -57,6 +57,72 @@ services:
       minio:
         condition: service_healthy
 
+  crawler:
+    build:
+      context: .
+      dockerfile: docker/crawler.Dockerfile
+    image: yuxi-crawler:0.1.dev
+    container_name: crawler-dev
+    working_dir: /app
+    volumes:
+      - ./crawler_service:/app
+      - ./.env:/app/.env
+    ports:
+      - "18060:5060"
+    networks:
+      - app-network
+    env_file:
+      - .env
+    environment:
+      - CRAWLER_DATABASE_URL=${CRAWLER_DATABASE_URL:-sqlite+aiosqlite:///./crawler.db}
+      - CRAWLER_WORKER_CONCURRENCY=${CRAWLER_WORKER_CONCURRENCY:-2}
+      - CRAWLER_USE_CELERY=${CRAWLER_USE_CELERY:-true}
+      - CRAWLER_REDIS_URL=${CRAWLER_REDIS_URL:-redis://crawler-redis:6379/0}
+    command: uvicorn main:app --host 0.0.0.0 --port 5060 --reload
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      crawler-redis:
+        condition: service_started
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:5060/api/v1/health || exit 1" ]
+      interval: 30s
+      timeout: 15s
+      retries: 8
+      start_period: 60s
+
+  crawler-worker:
+    build:
+      context: .
+      dockerfile: docker/crawler.Dockerfile
+    image: yuxi-crawler:0.1.dev
+    container_name: crawler-worker-dev
+    working_dir: /app
+    volumes:
+      - ./crawler_service:/app
+      - ./.env:/app/.env
+    networks:
+      - app-network
+    env_file:
+      - .env
+    environment:
+      - CRAWLER_DATABASE_URL=${CRAWLER_DATABASE_URL:-sqlite+aiosqlite:///./crawler.db}
+      - CRAWLER_USE_CELERY=${CRAWLER_USE_CELERY:-true}
+      - CRAWLER_REDIS_URL=${CRAWLER_REDIS_URL:-redis://crawler-redis:6379/0}
+    command: celery -A core.celery_app.celery_app worker --loglevel=info --concurrency=2
+    restart: unless-stopped
+    depends_on:
+      crawler-redis:
+        condition: service_started
+
+  crawler-redis:
+    image: redis:7-alpine
+    container_name: crawler-redis
+    networks:
+      - app-network
+    restart: unless-stopped
+
   web:
     build:
       context: .
@@ -144,9 +210,9 @@ services:
       timeout: 30s
       retries: 5
       start_period: 30s
-    ports:
-      - "9000:9000"
-      - "9001:9001"
+    # ports:
+    #   - "9000:9000"
+    #   - "9001:9001"
     networks:
       - app-network
     restart: unless-stopped
@@ -193,7 +259,7 @@ services:
     volumes:
       - ./docker/volumes/postgresql:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-yuxi_know} || exit 1"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-yuxi_know} || exit 1" ]
       interval: 5s
       timeout: 3s
       retries: 30
