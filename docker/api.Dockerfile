@@ -42,10 +42,23 @@ RUN set -ex \
 COPY ../pyproject.toml /app/pyproject.toml
 COPY ../.python-version /app/.python-version
 COPY ../uv.lock /app/uv.lock
+COPY ../.wheels /tmp/wheels
 
-# 如果网络还是不好，可以在后面添加 --index-url https://pypi.tuna.tsinghua.edu.cn/simple
+# 方法一：优先使用仓库内预下载的 CPU wheel，避免构建时反复拉取 torch 大包
+RUN set -ex \
+    && if ls /tmp/wheels/torch-*.whl /tmp/wheels/torchvision-*.whl >/dev/null 2>&1; then \
+        pip install --no-cache-dir --no-index --find-links=/tmp/wheels torch torchvision; \
+    else \
+        echo "No local torch cpu wheels found in /tmp/wheels, fallback to online indexes."; \
+    fi
+
+# 安装其余依赖；torch/torchvision 若已离线安装，这里会复用已安装版本
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-dev --frozen --index-url https://mirrors.aliyun.com/pypi/simple
+    uv sync --no-dev --frozen \
+    --index-url https://mirrors.aliyun.com/pypi/simple \
+    --extra-index-url https://download.pytorch.org/whl/cpu
+
+RUN rm -rf /tmp/wheels
 
 # 激活虚拟环境并添加到PATH
 ENV PATH="/app/.venv/bin:$PATH"
