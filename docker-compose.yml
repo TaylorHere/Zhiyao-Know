@@ -93,9 +93,6 @@ services:
       start_period: 60s
 
   crawler-worker:
-    build:
-      context: .
-      dockerfile: docker/crawler.Dockerfile
     image: yuxi-crawler:0.1.dev
     container_name: crawler-worker-dev
     working_dir: /app
