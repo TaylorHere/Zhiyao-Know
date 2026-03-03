@@ -16,6 +16,7 @@ ENV TZ=Asia/Shanghai \
     DEBIAN_FRONTEND=noninteractive
 
 RUN npm install -g npm@latest && npm cache clean --force
+ARG INSTALL_LIBREOFFICE=true
 
 # 设置代理和时区，更换镜像源，安装系统依赖 - 合并为一个RUN减少层数
 RUN set -ex \
@@ -31,10 +32,14 @@ RUN set -ex \
     ffmpeg \
     libsm6 \
     libxext6 \
-    libreoffice-writer \
-    libreoffice-core \
+    && if [ "${INSTALL_LIBREOFFICE}" = "true" ]; then \
+        apt-get install -y --no-install-recommends --fix-missing \
+        libreoffice-writer \
+        libreoffice-core; \
+       fi \
     # (D) 清理垃圾，减小体积
     && apt-get clean \
+    && rm -rf /var/cache/apt/archives/* \
     && rm -rf /var/lib/apt/lists/*
 
 

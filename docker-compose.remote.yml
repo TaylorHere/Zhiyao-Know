@@ -1,0 +1,36 @@
+services:
+  api:
+    build: null
+    image: registry.cn-beijing.aliyuncs.com/wyhy/mirrors:yuxi-api-0.5.dev
+    pull_policy: always
+    volumes:
+      - ./saves:/app/saves
+      - ./.env:/app/.env
+      - ${MODEL_DIR:-./models}:/models
+    command: uv run --no-dev uvicorn server.main:app --host 0.0.0.0 --port 5050
+
+  crawler:
+    build: null
+    image: registry.cn-beijing.aliyuncs.com/wyhy/mirrors:yuxi-crawler-0.1.dev
+    pull_policy: always
+    volumes:
+      - ./.env:/app/.env
+      - ./crawler_data:/app/data
+    environment:
+      - CRAWLER_DATABASE_URL=${CRAWLER_DATABASE_URL:-sqlite+aiosqlite:///app/data/crawler.db}
+    command: uvicorn main:app --host 0.0.0.0 --port 5060
+
+  crawler-worker:
+    image: registry.cn-beijing.aliyuncs.com/wyhy/mirrors:yuxi-crawler-0.1.dev
+    pull_policy: always
+    volumes:
+      - ./.env:/app/.env
+      - ./crawler_data:/app/data
+    environment:
+      - CRAWLER_DATABASE_URL=${CRAWLER_DATABASE_URL:-sqlite+aiosqlite:///app/data/crawler.db}
+
+  web:
+    build: null
+    image: registry.cn-beijing.aliyuncs.com/wyhy/mirrors:yuxi-web-0.5.dev
+    pull_policy: always
+    volumes: []
