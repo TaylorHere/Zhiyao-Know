@@ -127,19 +127,26 @@ async def list_job_pages(
     ).scalars().all()
 
     urls = list({row.page_url for row in page_rows if row.page_url})
-    result_map: dict[str, ExtractResult] = {}
+    result_by_task: dict[tuple[str, int | None], ExtractResult] = {}
+    latest_result_by_url: dict[str, ExtractResult] = {}
     if urls:
         result_rows = (
             await session.execute(
-                select(ExtractResult).where(ExtractResult.source_url.in_(urls))
+                select(ExtractResult)
+                .where(ExtractResult.source_url.in_(urls))
+                .order_by(ExtractResult.created_at.desc(), ExtractResult.id.desc())
             )
         ).scalars().all()
         for item in result_rows:
-            result_map[item.source_url] = item
+            key = (item.source_url, item.task_id)
+            if key not in result_by_task:
+                result_by_task[key] = item
+            if item.source_url not in latest_result_by_url:
+                latest_result_by_url[item.source_url] = item
 
     items: list[JobPageOut] = []
     for row in page_rows:
-        extract_row = result_map.get(row.page_url)
+        extract_row = result_by_task.get((row.page_url, row.task_id)) or latest_result_by_url.get(row.page_url)
         content_markdown = None
         title = None
         publish_date = None
