@@ -35,4 +35,7 @@ services:
     image: registry.cn-beijing.aliyuncs.com/wyhy/mirrors:yuxi-web-0.5.dev
     pull_policy: always
     volumes: []
+    depends_on:
+      - api
+      - crawler
     command: null

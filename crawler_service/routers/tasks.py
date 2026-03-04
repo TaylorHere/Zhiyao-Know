@@ -1,6 +1,7 @@
 import json
 from datetime import datetime
 
+from apscheduler.triggers.cron import CronTrigger
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -70,6 +71,7 @@ def _to_task_out(task: Task) -> TaskOut:
         name=_task_name(task),
         url=_task_url(task),
         frequency=task.frequency,
+        cron_expression=task.cron_expression,
         mode=_task_mode(task),
         status=_task_status(task),
         detail_url_pattern=task.detail_url_pattern,
@@ -106,6 +108,19 @@ def _normalize_url(payload: TaskCreate | TaskUpdate) -> str | None:
 
 def _status_to_bool(status: str) -> bool:
     return status == "active"
+
+
+def _normalize_cron_expression(value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    try:
+        CronTrigger.from_crontab(text)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"invalid cron_expression: {exc}") from exc
+    return text
 
 
 @router.get("", response_model=TaskListResponse)
@@ -153,6 +168,7 @@ async def create_task(payload: TaskCreate, session: AsyncSession = Depends(get_s
         raise HTTPException(status_code=400, detail="url is required")
     if not schema_json:
         raise HTTPException(status_code=400, detail="schema/json_schema is required")
+    cron_expression = _normalize_cron_expression(payload.cron_expression)
 
     options_json = json.dumps(payload.options.model_dump(), ensure_ascii=False)
     task = Task(
@@ -161,6 +177,7 @@ async def create_task(payload: TaskCreate, session: AsyncSession = Depends(get_s
         url=task_url,
         target_url=task_url,
         frequency=payload.frequency,
+        cron_expression=cron_expression,
         mode=payload.mode,
         detail_url_pattern=payload.detail_url_pattern,
         schema_json=schema_json,
@@ -200,6 +217,8 @@ async def update_task(task_id: int, payload: TaskUpdate, session: AsyncSession =
 
     if payload.frequency is not None:
         task.frequency = payload.frequency
+    if "cron_expression" in payload.model_fields_set:
+        task.cron_expression = _normalize_cron_expression(payload.cron_expression)
     if payload.mode is not None:
         task.mode = payload.mode
     if payload.detail_url_pattern is not None:

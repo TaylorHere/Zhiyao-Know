@@ -13,6 +13,7 @@ class Task(Base):
     site_name: Mapped[str] = mapped_column(String(255), nullable=False)
     target_url: Mapped[str] = mapped_column(String(2048), nullable=False)
     frequency: Mapped[str] = mapped_column(String(20), nullable=False)
+    cron_expression: Mapped[str | None] = mapped_column(String(100), nullable=True)
     status: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     last_scrape_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     json_schema: Mapped[str | None] = mapped_column(Text, nullable=True)

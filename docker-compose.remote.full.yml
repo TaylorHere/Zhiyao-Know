@@ -1,28 +1,10 @@
 services:
   api:
-    build:
-      context: .
-      dockerfile: docker/api.Dockerfile
-    image: yuxi-api:0.5.dev
+    image: registry.cn-beijing.aliyuncs.com/wyhy/mirrors:yuxi-api-0.5.dev
     container_name: api-dev
     working_dir: /app
-    volumes:
-      - ./server:/app/server
-      - ./src:/app/src
-      - ./saves:/app/saves
-      - ./test:/app/test
-      - ./scripts:/app/scripts
-      - ./.env:/app/.env
-      - ${MODEL_DIR:-./models}:/models # 使用默认值处理未定义的环境变量
-    ports:
-      - "5050:5050"
-    networks:
-      - app-network
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     env_file:
       - .env
-    # region api_envs
     environment:
       - HOST_IP=${HOST_IP:-}
       - POSTGRES_URL=${POSTGRES_URL:-postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-yuxi_know}}
@@ -40,8 +22,17 @@ services:
       - RUNNING_IN_DOCKER=true
       - NO_PROXY=localhost,127.0.0.1,milvus,graph,milvus-minio,milvus-etcd-dev,etcd,minio,mineru,paddlex,api.siliconflow.cn
       - no_proxy=localhost,127.0.0.1,milvus,graph,milvus-minio,milvus-etcd-dev,etcd,minio,mineru,paddlex,api.siliconflow.cn
-    # endregion api_envs
-    command: uv run --no-dev uvicorn server.main:app --host 0.0.0.0 --port 5050 --reload
+    volumes:
+      - ./saves:/app/saves
+      - ./.env:/app/.env
+      - ${MODEL_DIR:-./models}:/models
+    ports:
+      - "5050:5050"
+    networks:
+      - app-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: uv run --no-dev uvicorn server.main:app --host 0.0.0.0 --port 5050
     restart: unless-stopped
     healthcheck:
       test: [ "CMD-SHELL", "curl -f http://localhost:5050/api/system/health || exit 1" ]
@@ -58,56 +49,51 @@ services:
         condition: service_healthy
 
   crawler:
-    build:
-      context: .
-      dockerfile: docker/crawler.Dockerfile
-    image: yuxi-crawler:0.1.dev
+    image: registry.cn-beijing.aliyuncs.com/wyhy/mirrors:yuxi-crawler-0.1.dev
     container_name: crawler-dev
     working_dir: /app
+    env_file:
+      - .env
+    environment:
+      - CRAWLER_DATABASE_URL=${CRAWLER_DATABASE_URL:-sqlite+aiosqlite:////app/data/crawler.db}
+      - CRAWLER_WORKER_CONCURRENCY=${CRAWLER_WORKER_CONCURRENCY:-2}
+      - CRAWLER_USE_CELERY=${CRAWLER_USE_CELERY:-true}
+      - CRAWLER_REDIS_URL=${CRAWLER_REDIS_URL:-redis://crawler-redis:6379/0}
     volumes:
-      - ./crawler_service:/app
       - ./.env:/app/.env
+      - ./crawler_data:/app/data
     ports:
       - "18060:5060"
     networks:
       - app-network
-    env_file:
-      - .env
-    environment:
-      - CRAWLER_DATABASE_URL=${CRAWLER_DATABASE_URL:-sqlite+aiosqlite:///./crawler.db}
-      - CRAWLER_WORKER_CONCURRENCY=${CRAWLER_WORKER_CONCURRENCY:-2}
-      - CRAWLER_USE_CELERY=${CRAWLER_USE_CELERY:-true}
-      - CRAWLER_REDIS_URL=${CRAWLER_REDIS_URL:-redis://crawler-redis:6379/0}
-    command: uvicorn main:app --host 0.0.0.0 --port 5060 --reload
+    command: sh -c "mkdir -p /app/data && uvicorn main:app --host 0.0.0.0 --port 5060"
     restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-      crawler-redis:
-        condition: service_started
     healthcheck:
       test: [ "CMD-SHELL", "curl -f http://localhost:5060/api/v1/health || exit 1" ]
       interval: 30s
       timeout: 15s
       retries: 8
       start_period: 60s
+    depends_on:
+      crawler-redis:
+        condition: service_started
 
   crawler-worker:
-    image: yuxi-crawler:0.1.dev
+    image: registry.cn-beijing.aliyuncs.com/wyhy/mirrors:yuxi-crawler-0.1.dev
     container_name: crawler-worker-dev
     working_dir: /app
-    volumes:
-      - ./crawler_service:/app
-      - ./.env:/app/.env
-    networks:
-      - app-network
     env_file:
       - .env
     environment:
-      - CRAWLER_DATABASE_URL=${CRAWLER_DATABASE_URL:-sqlite+aiosqlite:///./crawler.db}
+      - CRAWLER_DATABASE_URL=${CRAWLER_DATABASE_URL:-sqlite+aiosqlite:////app/data/crawler.db}
       - CRAWLER_USE_CELERY=${CRAWLER_USE_CELERY:-true}
       - CRAWLER_REDIS_URL=${CRAWLER_REDIS_URL:-redis://crawler-redis:6379/0}
-    command: celery -A core.celery_app.celery_app worker --loglevel=info --concurrency=2
+    volumes:
+      - ./.env:/app/.env
+      - ./crawler_data:/app/data
+    networks:
+      - app-network
+    command: sh -c "mkdir -p /app/data && celery -A core.celery_app.celery_app worker --loglevel=info --concurrency=2"
     restart: unless-stopped
     depends_on:
       crawler-redis:
@@ -121,11 +107,7 @@ services:
     restart: unless-stopped
 
   web:
-    build:
-      context: .
-      dockerfile: docker/web.Dockerfile
-      target: production
-    image: yuxi-web:0.5.dev
+    image: registry.cn-beijing.aliyuncs.com/wyhy/mirrors:yuxi-web-0.5.dev
     container_name: web-dev
     ports:
       - "80:80"
@@ -134,10 +116,8 @@ services:
       - crawler
     networks:
       - app-network
-    command: nginx -g "daemon off;"
     restart: unless-stopped
 
-  # region neo4j
   graph:
     image: neo4j:5.26
     container_name: graph
@@ -161,7 +141,6 @@ services:
     networks:
       - app-network
     restart: unless-stopped
-  # endregion neo4j
 
   etcd:
     container_name: milvus-etcd-dev
@@ -200,9 +179,6 @@ services:
       timeout: 30s
       retries: 5
       start_period: 30s
-    # ports:
-    #   - "9000:9000"
-    #   - "9001:9001"
     networks:
       - app-network
     restart: unless-stopped
@@ -230,8 +206,8 @@ services:
       - "19530:19530"
       - "9091:9091"
     depends_on:
-      - "etcd"
-      - "minio"
+      - etcd
+      - minio
     networks:
       - app-network
     restart: unless-stopped
@@ -253,96 +229,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 30
-    networks:
-      - app-network
-    restart: unless-stopped
-
-  # lastest version: wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
-  mineru-vllm-server:
-    build:
-      context: .
-      dockerfile: docker/mineru.Dockerfile
-    image: mineru-vllm:latest
-    container_name: mineru-vllm-server
-    profiles:
-      - all
-    env_file:
-      - .env
-    ports:
-      - 30000:30000
-    environment:
-      MINERU_MODEL_SOURCE: local
-    entrypoint: mineru-vllm-server
-    command: --host 0.0.0.0 --port 30000
-      # parameters for vllm-engine
-      # --data-parallel-size 2  # If using multiple GPUs, increase throughput using vllm's multi-GPU parallel mode
-      # --gpu-memory-utilization 0.5  # If running on a single GPU and encountering VRAM shortage, reduce the KV cache size by this parameter, if VRAM issues persist, try lowering it further to `0.4` or below.
-    ulimits:
-      memlock: -1
-      stack: 67108864
-    ipc: host
-    healthcheck:
-      test: [ "CMD-SHELL", "curl -f http://localhost:30000/health || exit 1" ]
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              device_ids: [ "0" ]
-              capabilities: [ gpu ]
-    networks:
-      - app-network
-    restart: unless-stopped
-
-  mineru-api:
-    build:
-      context: .
-      dockerfile: docker/mineru.Dockerfile
-    image: mineru-vllm:latest
-    container_name: mineru-api
-    profiles:
-      - all
-    env_file:
-      - .env
-    ports:
-      - 30001:30001
-    environment:
-      MINERU_MODEL_SOURCE: local
-    entrypoint: mineru-api
-    command: --host 0.0.0.0 --port 30001
-    ulimits:
-      memlock: -1
-      stack: 67108864
-    ipc: host
-    restart: unless-stopped
-    networks:
-      - app-network
-
-  paddlex:
-    build:
-      context: .
-      dockerfile: docker/paddlex.Dockerfile
-    image: paddlex:latest
-    container_name: paddlex-ocr
-    profiles:
-      - all
-    volumes:
-      - ./docker/volumes/paddlex:/paddlex
-    ports:
-      - "8080:8080"
-    healthcheck:
-      test: [ "CMD-SHELL", "curl -f http://localhost:8080/health || exit 1" ]
-      interval: 20s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              device_ids: [ '0' ]
-              capabilities: [ gpu ]
     networks:
       - app-network
     restart: unless-stopped

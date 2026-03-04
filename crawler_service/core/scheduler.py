@@ -38,6 +38,11 @@ def _task_mode(task: Task) -> str:
     return task.mode or "scrape"
 
 
+def _task_cron_expression(task: Task) -> str | None:
+    text = (task.cron_expression or "").strip()
+    return text or None
+
+
 def _task_active(task: Task) -> bool:
     if task.status_text:
         return task.status_text == "active"
@@ -103,7 +108,14 @@ def _run_task(task_id: int):
     asyncio.run(_execute_task(task_id))
 
 
-def _build_trigger(frequency: str):
+def _build_trigger(task: Task):
+    cron_expression = _task_cron_expression(task)
+    if cron_expression:
+        try:
+            return CronTrigger.from_crontab(cron_expression)
+        except ValueError:
+            return IntervalTrigger(days=1)
+    frequency = task.frequency
     normalized = (frequency or "").strip().lower()
     if normalized == "hourly":
         return IntervalTrigger(hours=1)
@@ -120,7 +132,7 @@ def _build_trigger(frequency: str):
 
 
 def add_task_job(task: Task):
-    trigger = _build_trigger(task.frequency)
+    trigger = _build_trigger(task)
     if trigger is None:
         remove_task_job(task.id)
         return

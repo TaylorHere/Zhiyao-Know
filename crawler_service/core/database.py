@@ -48,6 +48,9 @@ async def init_db():
             await _ensure_sqlite_column(conn, "tasks", "name", "name VARCHAR(255)")
             await _ensure_sqlite_column(conn, "tasks", "url", "url VARCHAR(2048)")
             await _ensure_sqlite_column(conn, "tasks", "status_text", "status_text VARCHAR(20)")
+            await _ensure_sqlite_column(
+                conn, "tasks", "cron_expression", "cron_expression VARCHAR(100)"
+            )
             await _ensure_sqlite_column(conn, "tasks", "mode", "mode VARCHAR(20)")
             await _ensure_sqlite_column(conn, "tasks", "max_depth", "max_depth INTEGER")
             await _ensure_sqlite_column(conn, "tasks", "concurrency", "concurrency INTEGER")

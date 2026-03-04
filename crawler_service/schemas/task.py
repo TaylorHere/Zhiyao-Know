@@ -15,6 +15,7 @@ class TaskCreate(BaseModel):
     url: HttpUrl | None = None
     target_url: HttpUrl | None = None
     frequency: str
+    cron_expression: str | None = None
     mode: TaskMode = "scrape"
     detail_url_pattern: str | None = None
     schema: Any | None = None
@@ -32,6 +33,7 @@ class TaskUpdate(BaseModel):
     url: HttpUrl | None = None
     target_url: HttpUrl | None = None
     frequency: str | None = None
+    cron_expression: str | None = None
     mode: TaskMode | None = None
     detail_url_pattern: str | None = None
     schema: Any | None = None
@@ -58,6 +60,7 @@ class TaskOut(BaseModel):
     name: str
     url: str
     frequency: str
+    cron_expression: str | None
     mode: TaskMode
     status: TaskStatus
     detail_url_pattern: str | None
