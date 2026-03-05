@@ -60,6 +60,7 @@ class TaskOut(BaseModel):
     name: str
     url: str
     frequency: str
+    created_at: datetime | None
     cron_expression: str | None
     mode: TaskMode
     status: TaskStatus

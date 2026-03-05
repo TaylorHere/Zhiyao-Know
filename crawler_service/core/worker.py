@@ -3,7 +3,9 @@ import json
 import re
 from datetime import datetime
 from fnmatch import fnmatch
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 from typing import Any
 
 from sqlalchemy import select
@@ -139,6 +141,62 @@ def _normalize_scheme_by_target(target_url: str, urls: list[str]) -> list[str]:
     return output
 
 
+def _build_paginated_url_candidates(target_url: str, max_pages: int) -> list[str]:
+    try:
+        parsed = urlparse(target_url)
+    except Exception:
+        return [target_url]
+    path = parsed.path or ""
+    match = re.match(r"^(?P<base>.*?)(?:_(?P<num>\d+))?\.(?P<ext>html?)$", path, flags=re.IGNORECASE)
+    if not match:
+        return [target_url]
+    base = match.group("base")
+    ext = match.group("ext")
+    root = f"{parsed.scheme}://{parsed.netloc}"
+    candidates = [target_url]
+    for idx in range(2, max_pages + 1):
+        page_path = f"{base}_{idx}.{ext}"
+        candidates.append(f"{root}{page_path}")
+    return candidates
+
+
+def _http_url_exists(url: str, timeout: int = 8) -> bool:
+    try:
+        with urlopen(Request(url, method="HEAD"), timeout=timeout) as response:
+            return int(getattr(response, "status", 200)) < 400
+    except HTTPError as exc:
+        # Some sites deny HEAD or return non-200 for HEAD but allow GET.
+        if exc.code >= 400:
+            try:
+                with urlopen(Request(url, method="GET"), timeout=timeout) as response:
+                    return int(getattr(response, "status", 200)) < 400
+            except Exception:
+                return False
+        return exc.code < 400
+    except URLError:
+        return False
+    except Exception:
+        return False
+
+
+async def _discover_list_pages(target_url: str, max_pages: int) -> list[str]:
+    candidates = _build_paginated_url_candidates(target_url, max_pages)
+    if len(candidates) <= 1:
+        return [target_url]
+    pages = [target_url]
+    miss_count = 0
+    for candidate in candidates[1:]:
+        ok = await asyncio.to_thread(_http_url_exists, candidate)
+        if ok:
+            pages.append(candidate)
+            miss_count = 0
+        else:
+            miss_count += 1
+            if miss_count >= 3:
+                break
+    return pages
+
+
 async def _build_detail_log(job_id: str, mode: str, list_meta: dict[str, int | float | str] | None = None) -> str:
     async with SessionLocal() as session:
         page_rows = (
@@ -247,17 +305,49 @@ async def _run_list_mode_job(job: ExtractJob, payload: dict[str, Any]):
     detail_url_pattern = payload.get("detail_url_pattern")
     task_id = payload.get("task_id")
     options = ExtractOptions.model_validate(payload.get("options") or {})
+    detail_options = options
+    if options.wait_for:
+        # wait_for is usually configured for list page selectors; avoid applying it to detail pages.
+        detail_options = options.model_copy(update={"wait_for": None})
     concurrency = max(1, int(payload.get("concurrency") or 1))
 
-    discovered = await crawl_task_target(target_url, options=options)
-    filtered_urls = sorted({url for url in discovered if _match_url(url, detail_url_pattern)})
+    list_pages = [target_url]
+    if options.auto_paginate:
+        list_pages = await _discover_list_pages(target_url, options.max_list_pages)
+
+    discovered: list[str] = []
+    discover_semaphore = asyncio.Semaphore(4)
+
+    async def _discover_one(list_page_url: str) -> list[str]:
+        async with discover_semaphore:
+            try:
+                per_page_options = options
+                if list_page_url != target_url and options.wait_for:
+                    per_page_options = options.model_copy(update={"wait_for": None})
+                return await crawl_task_target(list_page_url, options=per_page_options)
+            except Exception:
+                return []
+
+    discovered_chunks = await asyncio.gather(*[_discover_one(url) for url in list_pages])
+    for chunk in discovered_chunks:
+        discovered.extend(chunk)
+    discovered = _normalize_scheme_by_target(target_url, discovered)
+    discovered_unique = sorted(set(discovered))
+    filtered_urls = sorted({url for url in discovered_unique if _match_url(url, detail_url_pattern)})
     fallback_used = 0
     if detail_url_pattern and len(filtered_urls) == 0 and len(discovered) > 0:
         filtered_urls = _fallback_effective_urls(target_url, discovered)
         fallback_used = 1
-    filtered_urls = _normalize_scheme_by_target(target_url, filtered_urls)
     filtered_urls = sorted(set(filtered_urls))
-    list_page_count = _count_list_pages(target_url, discovered)
+    list_page_count = len(list_pages)
+    async with SessionLocal() as session:
+        db_job = await session.get(ExtractJob, job.id)
+        if db_job:
+            db_job.list_page_count = list_page_count
+            db_job.discovered_links = len(discovered_unique)
+            db_job.effective_links = len(filtered_urls)
+            db_job.updated_at = datetime.utcnow()
+            await session.commit()
 
     if filtered_urls:
         async with SessionLocal() as session:
@@ -293,7 +383,20 @@ async def _run_list_mode_job(job: ExtractJob, payload: dict[str, Any]):
                 status="running",
             )
             try:
-                data, usage = await extract_with_llm(url=url, json_schema=schema_json, options=options)
+                try:
+                    data, usage = await extract_with_llm(url=url, json_schema=schema_json, options=detail_options)
+                except Exception as first_exc:
+                    err_text = str(first_exc)
+                    if "ERR_NAME_NOT_RESOLVED" not in err_text:
+                        raise
+                    retry_url = url
+                    if url.startswith("https://"):
+                        retry_url = "http://" + url[len("https://") :]
+                    data, usage = await extract_with_llm(
+                        url=retry_url,
+                        json_schema=schema_json,
+                        options=detail_options,
+                    )
                 await _upsert_extract_result(task_id=task_id, job_id=job.id, source_url=url, data=data)
                 all_data.append(data)
                 total_tokens += usage.total_tokens
@@ -311,13 +414,12 @@ async def _run_list_mode_job(job: ExtractJob, payload: dict[str, Any]):
                 )
 
     await asyncio.gather(*[_extract_one(url) for url in filtered_urls])
-    if failed_count > 0:
-        raise RuntimeError(f"部分页面抓取失败: {failed_count} 个页面失败")
     meta = {
         "list_page_count": list_page_count,
-        "discovered_links": len(discovered),
+        "discovered_links": len(discovered_unique),
         "effective_links": len(filtered_urls),
         "fallback_used": fallback_used,
+        "failed_count": failed_count,
     }
     return all_data, total_tokens, meta
 
@@ -368,6 +470,7 @@ async def run_job_by_id(job_id: str):
         token_usage = 0
         mode = "scrape"
         list_meta: dict[str, int] | None = None
+        soft_error_message: str | None = None
         try:
             payload = json.loads(job.request_json)
             mode = (payload.get("mode") or "scrape").lower()
@@ -375,12 +478,18 @@ async def run_job_by_id(job_id: str):
             if mode == "list":
                 data, token_usage, list_meta = await _run_list_mode_job(job, payload)
                 items_count = len(data)
+                failed_count = int((list_meta or {}).get("failed_count", 0))
+                if failed_count > 0:
+                    soft_error_message = f"部分页面抓取失败: {failed_count} 个页面失败"
             elif mode == "auto":
                 discovered = await crawl_task_target(payload["url"], options=ExtractOptions.model_validate(payload.get("options") or {}))
                 if discovered:
                     payload["mode"] = "list"
                     data, token_usage, list_meta = await _run_list_mode_job(job, payload)
                     items_count = len(data)
+                    failed_count = int((list_meta or {}).get("failed_count", 0))
+                    if failed_count > 0:
+                        soft_error_message = f"部分页面抓取失败: {failed_count} 个页面失败"
                 else:
                     data, token_usage, _ = await _run_single_url_job(job, payload)
                     if isinstance(data, list):
@@ -400,10 +509,10 @@ async def run_job_by_id(job_id: str):
                 "total_tokens": token_usage,
                 "model": settings.llm_model,
             }
-            job.status = "success"
+            job.status = "failed" if soft_error_message else "success"
             job.result_json = json.dumps(data, ensure_ascii=False)
             job.usage_json = json.dumps(usage, ensure_ascii=False)
-            job.error_message = None
+            job.error_message = soft_error_message
         except Exception as exc:
             job.status = "failed"
             job.error_message = str(exc)

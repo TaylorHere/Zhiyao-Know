@@ -68,3 +68,25 @@ docker logs -f api-prod
 # 查看 Nginx 访问日志
 docker logs -f web-prod
 ```
+
+## 离线交付部署（内网）
+
+如果目标环境无法访问外网，使用离线包部署：
+
+```bash
+# 在源机器打包
+bash scripts/offline_bundle.sh export \
+  --bundle-name yuxi-offline-e2e \
+  --compose-files "docker-compose.remote.full.yml" \
+  --with-env yes
+
+# 在目标机器导入并启动
+bash scripts/offline_bundle.sh import \
+  --bundle ./yuxi-offline-e2e.tar.gz \
+  --compose-files "docker-compose.remote.full.yml" \
+  --up yes
+```
+
+详细步骤和交付清单见：
+
+- `docs/离线交付部署说明.md`

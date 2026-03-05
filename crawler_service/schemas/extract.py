@@ -18,6 +18,8 @@ class ExtractOptions(BaseModel):
     simulate_user: bool = False
     magic: bool = False
     user_agent: str | None = None
+    auto_paginate: bool = True
+    max_list_pages: int = Field(default=50, ge=1, le=500)
 
 
 class ExtractRequest(BaseModel):

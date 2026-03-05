@@ -15,6 +15,7 @@ class Task(Base):
     frequency: Mapped[str] = mapped_column(String(20), nullable=False)
     cron_expression: Mapped[str | None] = mapped_column(String(100), nullable=True)
     status: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     last_scrape_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     json_schema: Mapped[str | None] = mapped_column(Text, nullable=True)
     options_json: Mapped[str | None] = mapped_column(Text, nullable=True)

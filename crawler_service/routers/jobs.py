@@ -24,6 +24,16 @@ def _trigger_source_from_request(request_json: str | None) -> str:
     return payload.get("trigger_source") or "unknown"
 
 
+def _mode_from_request(request_json: str | None) -> str:
+    if not request_json:
+        return "unknown"
+    try:
+        payload = json.loads(request_json)
+    except json.JSONDecodeError:
+        return "unknown"
+    return str(payload.get("mode") or "scrape").lower()
+
+
 def _extract_content_markdown(data: object) -> str | None:
     if isinstance(data, dict):
         content = data.get("content")
@@ -80,7 +90,17 @@ async def list_jobs(
     items: list[JobOut] = []
     for job, task_name, site_name in rows:
         source = _trigger_source_from_request(job.request_json)
+        mode = _mode_from_request(job.request_json)
         stats = page_stats.get(job.id, {})
+        total_pages = int(stats.get("total", 0))
+        list_page_count = int(job.list_page_count or 0)
+        discovered_links = int(job.discovered_links or 0)
+        effective_links = int(job.effective_links or 0)
+        # Backward compatibility for historical jobs that failed before list meta was persisted.
+        if mode in {"list", "auto"} and total_pages > 0 and list_page_count == 0 and discovered_links == 0 and effective_links == 0:
+            # Historical jobs may miss persisted list meta; page-level totals are still available.
+            effective_links = total_pages
+            discovered_links = total_pages
         items.append(
             JobOut(
                 job_id=job.id,
@@ -91,10 +111,10 @@ async def list_jobs(
                 created_at=job.created_at,
                 updated_at=job.updated_at,
                 error_message=job.error_message,
-                list_page_count=job.list_page_count or 0,
-                discovered_links=job.discovered_links or 0,
-                effective_links=job.effective_links or 0,
-                total_pages=int(stats.get("total", 0)),
+                list_page_count=list_page_count,
+                discovered_links=discovered_links,
+                effective_links=effective_links,
+                total_pages=total_pages,
                 pending_pages=int(stats.get("pending", 0)),
                 running_pages=int(stats.get("running", 0)),
                 success_pages=int(stats.get("success", 0)),

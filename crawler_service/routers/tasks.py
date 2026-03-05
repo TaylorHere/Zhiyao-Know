@@ -71,6 +71,7 @@ def _to_task_out(task: Task) -> TaskOut:
         name=_task_name(task),
         url=_task_url(task),
         frequency=task.frequency,
+        created_at=task.created_at,
         cron_expression=task.cron_expression,
         mode=_task_mode(task),
         status=_task_status(task),

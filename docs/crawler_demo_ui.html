@@ -215,7 +215,9 @@
                       <template #default="scope">
                         <el-progress :percentage="jobProgress(scope.row)" :stroke-width="12" />
                         <div class="text-xs text-slate-500 mt-1">总 {{ scope.row.total_pages || 0 }} / 成功 {{ scope.row.success_pages || 0 }} / 失败 {{ scope.row.failed_pages || 0 }} / 跳过 {{ scope.row.skipped_pages || 0 }}</div>
-                        <div class="text-xs text-slate-400 mt-1">列表页 {{ scope.row.list_page_count || 0 }} / 发现链接 {{ scope.row.discovered_links || 0 }} / 有效链接 {{ scope.row.effective_links || 0 }}</div>
+                        <div class="text-xs text-slate-400 mt-1">
+                          列表页 {{ displayListPageCount(scope.row) }} / 发现链接 {{ scope.row.discovered_links || 0 }} / 有效链接 {{ scope.row.effective_links || 0 }}
+                        </div>
                       </template>
                     </el-table-column>
                     <el-table-column label="更新时间" width="170">
@@ -223,6 +225,7 @@
                     </el-table-column>
                     <el-table-column label="操作" width="180">
                       <template #default="scope">
+                        <el-button type="primary" link @click="refreshJob(scope.row)">刷新</el-button>
                         <el-button type="primary" link @click="openJobPages(scope.row)">页面日志</el-button>
                         <el-button type="info" link @click="openJobLogs(scope.row)">执行日志</el-button>
                       </template>
@@ -281,6 +284,11 @@
                 <el-table-column label="频率" width="120">
                   <template #default="scope">
                     <span>{{ frequencyText(scope.row.frequency) }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="创建时间" width="170">
+                  <template #default="scope">
+                    <span class="text-xs">{{ formatTime(scope.row.created_at) || '-' }}</span>
                   </template>
                 </el-table-column>
                 <el-table-column label="状态" width="110">
@@ -839,6 +847,14 @@
           return map[value] || value || '-';
         };
 
+        const displayListPageCount = (row) => {
+          const count = Number(row?.list_page_count || 0);
+          if (count > 0) return count;
+          const hasListStats = Number(row?.discovered_links || 0) > 0 || Number(row?.effective_links || 0) > 0;
+          if (hasListStats) return '未统计';
+          return 0;
+        };
+
         const jobProgress = (row) => {
           const total = Number(row?.total_pages || 0);
           if (total <= 0) {
@@ -1060,6 +1076,22 @@
             centerJobs.value = data.items || [];
           } catch (e) {
             ElementPlus.ElMessage.error(`加载任务执行记录失败: ${e.message}`);
+          }
+        };
+
+        const refreshJob = async (row) => {
+          if (!row?.job_id || !selectedTaskId.value) return;
+          try {
+            const data = await apiGet('/jobs', { page: 1, size: 100, task_id: selectedTaskId.value });
+            const latest = (data.items || []).find(item => item.job_id === row.job_id);
+            if (!latest) {
+              ElementPlus.ElMessage.warning('未找到该任务执行记录，可能已被清理');
+              return;
+            }
+            centerJobs.value = (data.items || []);
+            ElementPlus.ElMessage.success('已刷新当前任务结果');
+          } catch (e) {
+            ElementPlus.ElMessage.error(`刷新任务失败: ${e.message}`);
           }
         };
 
@@ -1396,6 +1428,7 @@
           frequencyText,
           modeText,
           pageStatusText,
+          displayListPageCount,
           jobProgress,
           triggerSourceText,
           switchView,
@@ -1405,6 +1438,7 @@
           loadAllResults,
           openCreate,
           selectTask,
+          refreshJob,
           editTask,
           saveTask,
           runTask,

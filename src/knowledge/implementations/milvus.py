@@ -709,7 +709,34 @@ class MilvusKB(KnowledgeBase):
     async def get_file_basic_info(self, db_id: str, file_id: str) -> dict:
         """获取文件基本信息（仅元数据）"""
         if file_id not in self.files_meta:
-            raise Exception(f"File not found: {file_id}")
+            # 兼容历史数据：优先回查 PostgreSQL，避免仅靠内存元数据导致“文件不存在”
+            from src.repositories.knowledge_file_repository import KnowledgeFileRepository
+
+            record = await KnowledgeFileRepository().get_by_file_id(file_id)
+            if record is None or record.db_id != db_id:
+                raise Exception(f"File not found: {file_id}")
+
+            recovered_meta = {
+                "database_id": record.db_id,
+                "filename": record.filename,
+                "file_name": record.original_filename or record.filename,
+                "file_type": record.file_type,
+                "path": record.minio_url or record.path or "",
+                "minio_url": record.minio_url,
+                "markdown_file": record.markdown_file,
+                "status": record.status,
+                "content_hash": record.content_hash,
+                "file_size": record.file_size,
+                "content_type": record.content_type,
+                "is_folder": bool(record.is_folder),
+                "parent_id": record.parent_id,
+                "error_message": record.error_message,
+                "created_by": record.created_by,
+                "updated_by": record.updated_by,
+                "created_at": utc_isoformat(record.created_at) if record.created_at else None,
+                "updated_at": utc_isoformat(record.updated_at) if record.updated_at else None,
+            }
+            self.files_meta[file_id] = recovered_meta
 
         return {"meta": self.files_meta[file_id]}
 
