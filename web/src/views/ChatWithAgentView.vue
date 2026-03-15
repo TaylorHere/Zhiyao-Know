@@ -48,6 +48,7 @@
                 msgIndex === conversation.messages.length - 1
               "
               :show-refs="false"
+              :show-tool-calls="SHOW_TOOL_CALLS_IN_MARKETING"
             />
           </div>
           
@@ -337,6 +338,8 @@ const userStore = useUserStore()
 // 营销页固定使用该智能体及配置
 const MARKETING_AGENT_ID = 'HuizhouPowerQAAgent'
 const MARKETING_AGENT_CONFIG_ID = 9
+/** 营销页是否显示工具调用过程，默认 false 隐藏；改为 true 可恢复显示 */
+const SHOW_TOOL_CALLS_IN_MARKETING = false
 const marketingAgentIdRef = ref(MARKETING_AGENT_ID)
 
 // 从 agentStore 中获取响应式状态（仅用于弹窗展示，实际请求用 MARKETING_AGENT_ID）

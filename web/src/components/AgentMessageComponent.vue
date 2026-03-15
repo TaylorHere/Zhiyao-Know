@@ -63,7 +63,7 @@
         <span v-else>{{ message.error_type || '未知错误' }}</span>
       </div>
 
-      <div v-if="validToolCalls && validToolCalls.length > 0" class="tool-calls-container">
+      <div v-if="showToolCalls && validToolCalls && validToolCalls.length > 0" class="tool-calls-container">
         <div
           v-for="(toolCall, index) in validToolCalls"
           :key="toolCall.id || index"
@@ -139,6 +139,11 @@ const props = defineProps({
   showRefs: {
     type: [Array, Boolean],
     default: () => false
+  },
+  /** 是否显示工具调用过程，默认 true；设为 false 时可隐藏（如营销页） */
+  showToolCalls: {
+    type: Boolean,
+    default: true
   },
   // 是否为最新消息
   isLatestMessage: {
