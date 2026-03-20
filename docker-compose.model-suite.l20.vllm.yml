@@ -1,0 +1,154 @@
+services:
+  vllm-qwen25-72b-awq:
+    image: vllm/vllm-openai:latest
+    container_name: vllm-qwen25-72b-awq
+    command:
+      - --model
+      - /models/Qwen/Qwen2.5-72B-Instruct-AWQ
+      - --served-model-name
+      - Qwen2.5-72B-Instruct-AWQ
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --tensor-parallel-size
+      - "2"
+      - --quantization
+      - awq
+      - --dtype
+      - half
+      - --gpu-memory-utilization
+      - "0.92"
+      - --max-model-len
+      - "32768"
+      - --trust-remote-code
+    volumes:
+      - ${MODEL_DIR:-./models}:/models
+      - ./docker/volumes/vllm/hf-cache:/root/.cache/huggingface
+    ports:
+      - "8000:8000"
+    ipc: host
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0", "1"]
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 20
+      start_period: 300s
+    networks:
+      - model-network
+    restart: unless-stopped
+
+  vllm-qwen3-embedding-cpu:
+    image: vllm/vllm-openai-cpu:latest
+    container_name: vllm-qwen3-embedding-cpu
+    command:
+      - --model
+      - /models/Qwen/Qwen3-Embedding-0.6B
+      - --task
+      - embed
+      - --served-model-name
+      - Qwen3-Embedding-0.6B
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8001"
+      - --max-model-len
+      - "4096"
+      - --trust-remote-code
+    environment:
+      - CUDA_VISIBLE_DEVICES=
+    volumes:
+      - ${MODEL_DIR:-./models}:/models
+      - ./docker/volumes/vllm/hf-cache:/root/.cache/huggingface
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8001/health || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 20
+      start_period: 120s
+    networks:
+      - model-network
+    restart: unless-stopped
+
+  vllm-qwen3-rerank-cpu:
+    image: vllm/vllm-openai-cpu:latest
+    container_name: vllm-qwen3-rerank-cpu
+    command:
+      - --model
+      - /models/Qwen/Qwen3-Reranker-0.6B
+      - --task
+      - score
+      - --served-model-name
+      - qwen3-rerank
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8002"
+      - --max-model-len
+      - "4096"
+      - --trust-remote-code
+    environment:
+      - CUDA_VISIBLE_DEVICES=
+    volumes:
+      - ${MODEL_DIR:-./models}:/models
+      - ./docker/volumes/vllm/hf-cache:/root/.cache/huggingface
+    ports:
+      - "8002:8002"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8002/health || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 20
+      start_period: 120s
+    networks:
+      - model-network
+    restart: unless-stopped
+
+  paddlex:
+    build:
+      context: .
+      dockerfile: docker/paddlex.Dockerfile
+    image: paddlex:latest
+    container_name: paddlex-ocr
+    volumes:
+      - ./docker/volumes/paddlex:/paddlex
+    ports:
+      - "8080:8080"
+    environment:
+      - CUDA_VISIBLE_DEVICES=
+    command:
+      - paddlex
+      - --serve
+      - --pipeline
+      - PP-StructureV3.yaml
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --device
+      - cpu
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 8
+      start_period: 90s
+    networks:
+      - model-network
+    restart: unless-stopped
+
+networks:
+  model-network:
+    driver: bridge
