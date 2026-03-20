@@ -16,9 +16,13 @@ services:
       - --dtype
       - auto
       - --gpu-memory-utilization
-      - "0.92"
+      - "0.90"
       - --max-model-len
-      - "32768"
+      - "24576"
+      - --max-num-seqs
+      - "12"
+      - --max-num-batched-tokens
+      - "24576"
       - --trust-remote-code
     volumes:
       - ${MODEL_DIR:-./models}:/models

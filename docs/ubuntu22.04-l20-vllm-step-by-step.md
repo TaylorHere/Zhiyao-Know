@@ -353,8 +353,30 @@ docker compose -f "$FILE" down
 - `docker/litellm.qwen35.yaml`
 
 每个模型都有独立的 `rpm` / `tpm` 配置（在 `litellm_params` 下）。
+
+当前默认值（基于双 L20 的稳态配置）：
+
+- **Qwen2.5-72B-Instruct-AWQ**：`rpm=36`，`tpm=90000`
+- **Qwen3.5-35B-A3B-FP8**：`rpm=72`，`tpm=180000`
+
 如果并发较高且出现 LLM OOM，可先适当降低：
 
-- Chat 模型的 `tpm`（例如从 `120000` 降到 `60000`）
-- Chat 模型的 `rpm`（例如从 `60` 降到 `30`）
+- Chat 模型的 `tpm`（建议先下调 20%~40%）
+- Chat 模型的 `rpm`（建议先下调 20%~40%）
+
+## 14. vLLM 并发参数默认值（双 L20 推荐）
+
+当前 compose 已内置以下默认参数：
+
+- **Qwen2.5-72B-Instruct-AWQ**
+  - `--gpu-memory-utilization 0.86`
+  - `--max-model-len 16384`
+  - `--max-num-seqs 8`
+  - `--max-num-batched-tokens 16384`
+
+- **Qwen3.5-35B-A3B-FP8**
+  - `--gpu-memory-utilization 0.90`
+  - `--max-model-len 24576`
+  - `--max-num-seqs 12`
+  - `--max-num-batched-tokens 24576`
 

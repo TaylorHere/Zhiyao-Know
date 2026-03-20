@@ -122,3 +122,4 @@ bash scripts/offline_bundle.sh import \
 - `docker-compose.model-suite.l20.qwen35.vllm.yml`（模型套件，不含 OCR）
 
 说明：以上四个编排均包含 `litellm-gateway`（LiteLLM，端口 `8010`），用于在业务与 vLLM 之间做 Token 感知限流（RPM/TPM）。
+并发与限流默认值已按双 L20 场景预设（Qwen2.5 更保守，Qwen3.5 更高吞吐）。
