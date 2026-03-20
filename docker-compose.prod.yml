@@ -248,6 +248,7 @@ services:
       - all
     volumes:
       - ./docker/volumes/paddlex:/paddlex
+      - ${MODEL_DIR:-./models}/PaddleX:/root/.paddlex
     environment:
       - CUDA_VISIBLE_DEVICES=
     command:

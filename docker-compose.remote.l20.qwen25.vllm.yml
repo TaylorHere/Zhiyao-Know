@@ -211,6 +211,7 @@ services:
     container_name: paddlex-ocr
     volumes:
       - ./docker/volumes/paddlex:/paddlex
+      - ${MODEL_DIR:-./models}/PaddleX:/root/.paddlex
     ports:
       - "8080:8080"
     environment:
