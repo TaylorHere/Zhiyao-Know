@@ -23,13 +23,6 @@ services:
       file: docker-compose.yaml
       service: crawler-redis
 
-  litellm-redis:
-    image: redis:7-alpine
-    container_name: litellm-redis
-    networks:
-      - app-network
-    restart: unless-stopped
-
   web:
     extends:
       file: docker-compose.yaml
@@ -76,9 +69,10 @@ services:
       - --port
       - "8010"
     environment:
-      - REDIS_HOST=${LITELLM_REDIS_HOST:-litellm-redis}
+      - REDIS_HOST=${LITELLM_REDIS_HOST:-crawler-redis}
       - REDIS_PORT=${LITELLM_REDIS_PORT:-6379}
       - REDIS_PASSWORD=${LITELLM_REDIS_PASSWORD:-}
+      - REDIS_DB=${LITELLM_REDIS_DB:-1}
     volumes:
       - ./docker/litellm.qwen25.queue.yaml:/app/config.yaml:ro
     ports:
@@ -93,7 +87,7 @@ services:
       - vllm-qwen25-72b-awq
       - vllm-qwen3-embedding-cpu
       - vllm-qwen3-rerank-cpu
-      - litellm-redis
+      - crawler-redis
     networks:
       - app-network
     restart: unless-stopped
