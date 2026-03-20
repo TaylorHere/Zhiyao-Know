@@ -7,7 +7,7 @@
 - `Qwen3-Reranker-0.6B`：vLLM，CPU
 - `PaddleOCR (PP-StructureV3)`：CPU
 
-对应编排文件：`docker-compose.remote.l20.vllm.yml`
+对应编排文件：`docker-compose.remote.l20.qwen25.vllm.yml`
 
 ---
 
@@ -202,13 +202,13 @@ POSTGRES_PASSWORD=<strong_password>
 
 ```bash
 cd /opt/yuxi-know/Zhiyao-Know
-docker compose -f docker-compose.remote.l20.vllm.yml up -d
+docker compose -f docker-compose.remote.l20.qwen25.vllm.yml up -d
 ```
 
 查看状态：
 
 ```bash
-docker compose -f docker-compose.remote.l20.vllm.yml ps
+docker compose -f docker-compose.remote.l20.qwen25.vllm.yml ps
 ```
 
 ---
@@ -295,15 +295,15 @@ docker logs -f vllm-qwen25-72b-awq
 
 ```bash
 # 查看所有服务日志
-docker compose -f docker-compose.remote.l20.vllm.yml logs -f
+docker compose -f docker-compose.remote.l20.qwen25.vllm.yml logs -f
 
 # 仅看 vLLM 72B 服务日志
-docker compose -f docker-compose.remote.l20.vllm.yml logs -f vllm-qwen25-72b-awq
+docker compose -f docker-compose.remote.l20.qwen25.vllm.yml logs -f vllm-qwen25-72b-awq
 
 # 重启
-docker compose -f docker-compose.remote.l20.vllm.yml restart
+docker compose -f docker-compose.remote.l20.qwen25.vllm.yml restart
 
 # 停止
-docker compose -f docker-compose.remote.l20.vllm.yml down
+docker compose -f docker-compose.remote.l20.qwen25.vllm.yml down
 ```
 
