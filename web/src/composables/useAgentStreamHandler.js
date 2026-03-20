@@ -9,8 +9,7 @@ import { unref } from 'vue'
  */
 const processStreamResponse = async (response, onChunk) => {
   if (!response || !response.body) {
-    console.warn('Invalid response or missing body for stream processing')
-    return
+    throw new Error('无效的流式响应：缺少 response body')
   }
 
   const reader = response.body.getReader()
@@ -76,7 +75,8 @@ export function useAgentStreamHandler({
    * @returns {Boolean} - Returns true if processing should stop (e.g. error, finished, interrupted)
    */
   const handleStreamChunk = (chunk, threadId) => {
-    const { status, msg, request_id, message: chunkMessage } = chunk
+    const { status, msg, request_id, message: chunkMessage, error_message: errorMessage } = chunk
+    const displayMessage = chunkMessage || errorMessage || '流式响应失败'
     const threadState = getThreadState(threadId)
 
     if (!threadState) return false
@@ -96,7 +96,7 @@ export function useAgentStreamHandler({
         return false
 
       case 'error':
-        handleChatError({ message: chunkMessage }, 'stream')
+        handleChatError({ message: displayMessage }, 'stream')
         // Stop the loading indicator
         if (threadState) {
           threadState.isStreaming = false
@@ -148,8 +148,8 @@ export function useAgentStreamHandler({
           threadState.isStreaming = false
         }
         // 如果有 message 字段，显示提示（例如：敏感内容检测）
-        if (chunkMessage) {
-          message.info(chunkMessage)
+        if (displayMessage) {
+          message.info(displayMessage)
         }
         return true
     }
