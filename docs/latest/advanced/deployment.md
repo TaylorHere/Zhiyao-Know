@@ -128,3 +128,4 @@ bash scripts/offline_bundle.sh import \
 
 - 指标文件：`saves/metrics/llm_summary.json`
 - 管理员接口：`GET /api/system/llm-metrics/summary`
+- 包含累计 `avg/mean` 字段（如延迟、token/请求）

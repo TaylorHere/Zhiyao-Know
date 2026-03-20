@@ -47,6 +47,7 @@ class LLMMetricsRecorder:
             data.setdefault("updated_at", _utc_now_iso())
             data.setdefault("totals", {})
             data.setdefault("models", {})
+            self._refresh_all_derived(data)
             return data
         except Exception as e:  # noqa: BLE001
             logger.warning(f"Failed to load LLM metrics file, reinitializing: {e}")
@@ -82,7 +83,82 @@ class LLMMetricsRecorder:
             "last_status_code": None,
             "last_error": "",
             "updated_at": _utc_now_iso(),
+            # derived fields (avg/mean)
+            "success_rate": 0.0,
+            "error_rate": 0.0,
+            "rate_limited_rate": 0.0,
+            "upstream_5xx_rate": 0.0,
+            "latency_ms_avg": 0.0,
+            "latency_ms_mean": 0.0,
+            "prompt_tokens_avg": 0.0,
+            "prompt_tokens_mean": 0.0,
+            "completion_tokens_avg": 0.0,
+            "completion_tokens_mean": 0.0,
+            "total_tokens_avg": 0.0,
+            "total_tokens_mean": 0.0,
+            "input_items_avg": 0.0,
+            "input_items_mean": 0.0,
+            "rerank_docs_avg": 0.0,
+            "rerank_docs_mean": 0.0,
         }
+
+    @staticmethod
+    def _safe_div(numerator: int | float, denominator: int | float) -> float:
+        if not denominator:
+            return 0.0
+        return float(numerator) / float(denominator)
+
+    @classmethod
+    def _refresh_derived_stats(cls, stats: dict[str, Any]) -> None:
+        requests_total = int(stats.get("requests_total", 0) or 0)
+        success_total = int(stats.get("success_total", 0) or 0)
+        error_total = int(stats.get("error_total", 0) or 0)
+        rate_limited_total = int(stats.get("rate_limited_total", 0) or 0)
+        upstream_5xx_total = int(stats.get("upstream_5xx_total", 0) or 0)
+        latency_ms_sum = float(stats.get("latency_ms_sum", 0.0) or 0.0)
+        prompt_tokens_total = int(stats.get("prompt_tokens_total", 0) or 0)
+        completion_tokens_total = int(stats.get("completion_tokens_total", 0) or 0)
+        total_tokens_total = int(stats.get("total_tokens_total", 0) or 0)
+        input_items_total = int(stats.get("input_items_total", 0) or 0)
+        rerank_docs_total = int(stats.get("rerank_docs_total", 0) or 0)
+
+        success_rate = cls._safe_div(success_total, requests_total)
+        error_rate = cls._safe_div(error_total, requests_total)
+        rate_limited_rate = cls._safe_div(rate_limited_total, requests_total)
+        upstream_5xx_rate = cls._safe_div(upstream_5xx_total, requests_total)
+        latency_avg = cls._safe_div(latency_ms_sum, requests_total)
+        prompt_avg = cls._safe_div(prompt_tokens_total, requests_total)
+        completion_avg = cls._safe_div(completion_tokens_total, requests_total)
+        total_avg = cls._safe_div(total_tokens_total, requests_total)
+        input_items_avg = cls._safe_div(input_items_total, requests_total)
+        rerank_docs_avg = cls._safe_div(rerank_docs_total, requests_total)
+
+        stats["success_rate"] = round(success_rate, 6)
+        stats["error_rate"] = round(error_rate, 6)
+        stats["rate_limited_rate"] = round(rate_limited_rate, 6)
+        stats["upstream_5xx_rate"] = round(upstream_5xx_rate, 6)
+        stats["latency_ms_avg"] = round(latency_avg, 4)
+        stats["latency_ms_mean"] = round(latency_avg, 4)
+        stats["prompt_tokens_avg"] = round(prompt_avg, 4)
+        stats["prompt_tokens_mean"] = round(prompt_avg, 4)
+        stats["completion_tokens_avg"] = round(completion_avg, 4)
+        stats["completion_tokens_mean"] = round(completion_avg, 4)
+        stats["total_tokens_avg"] = round(total_avg, 4)
+        stats["total_tokens_mean"] = round(total_avg, 4)
+        stats["input_items_avg"] = round(input_items_avg, 4)
+        stats["input_items_mean"] = round(input_items_avg, 4)
+        stats["rerank_docs_avg"] = round(rerank_docs_avg, 4)
+        stats["rerank_docs_mean"] = round(rerank_docs_avg, 4)
+
+    @classmethod
+    def _refresh_all_derived(cls, data: dict[str, Any]) -> None:
+        for section in ("totals", "models"):
+            values = data.get(section, {})
+            if not isinstance(values, dict):
+                continue
+            for _, stats in values.items():
+                if isinstance(stats, dict):
+                    cls._refresh_derived_stats(stats)
 
     @staticmethod
     def _bucket_key(latency_ms: float) -> str:
@@ -110,6 +186,7 @@ class LLMMetricsRecorder:
         self._flush()
 
     def _flush(self) -> None:
+        self._refresh_all_derived(self._data)
         self._data["updated_at"] = _utc_now_iso()
         tmp_path = self.metrics_path.with_suffix(".tmp")
         with open(tmp_path, "w", encoding="utf-8") as f:
@@ -120,6 +197,7 @@ class LLMMetricsRecorder:
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
             # 返回内存快照即可，避免高频读取文件
+            self._refresh_all_derived(self._data)
             return json.loads(json.dumps(self._data))
 
     def record(
@@ -168,6 +246,7 @@ class LLMMetricsRecorder:
                     if error_text:
                         stats["last_error"] = error_text[:500]
                 stats["updated_at"] = _utc_now_iso()
+                self._refresh_derived_stats(stats)
 
             self._flush_if_needed()
 

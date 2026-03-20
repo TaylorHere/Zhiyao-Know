@@ -390,8 +390,8 @@ docker compose -f "$FILE" down
 
 - 总请求数、成功/失败数
 - 429 次数、5xx 次数
-- 延迟总和/最大值/分桶
-- token 累计（可用时）
+- 延迟总和/最大值/分桶 + `latency_ms_avg/latency_ms_mean`
+- token 累计（可用时） + `prompt/completion/total` 的 `avg/mean`
 
 查看方式（管理员接口）：
 
