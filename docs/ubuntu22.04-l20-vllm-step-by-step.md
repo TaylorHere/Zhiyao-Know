@@ -13,9 +13,9 @@
 
 | 场景 | 编排文件 | 是否包含 OCR |
 |---|---|---|
-| Qwen2.5 整套拉起 | `docker-compose.remote.l20.qwen25.vllm.yml` | 是（`paddlex`） |
+| Qwen2.5 整套拉起 | `docker-compose.l20.qwen25.vllm.yml` | 是（`paddlex`） |
 | Qwen2.5 仅模型套件 | `docker-compose.model-suite.l20.qwen25.vllm.yml` | 否 |
-| Qwen3.5 整套拉起 | `docker-compose.remote.l20.qwen35.vllm.yml` | 是（`paddlex`） |
+| Qwen3.5 整套拉起 | `docker-compose.l20.qwen35.vllm.yml` | 是（`paddlex`） |
 | Qwen3.5 仅模型套件 | `docker-compose.model-suite.l20.qwen35.vllm.yml` | 否 |
 
 以上四个文件均内置 `litellm-gateway`（LiteLLM），作为业务与模型服务之间的 **Token 感知网关**，默认端口 `8010`。
@@ -313,10 +313,10 @@ PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn
 
 ```bash
 cd /opt/yuxi-know/Zhiyao-Know
-FILE=docker-compose.remote.l20.qwen25.vllm.yml
+FILE=docker-compose.l20.qwen25.vllm.yml
 # 可替换为：
 # docker-compose.model-suite.l20.qwen25.vllm.yml
-# docker-compose.remote.l20.qwen35.vllm.yml
+# docker-compose.l20.qwen35.vllm.yml
 # docker-compose.model-suite.l20.qwen35.vllm.yml
 
 docker compose -f "$FILE" up -d
