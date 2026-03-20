@@ -248,19 +248,25 @@ services:
       - all
     volumes:
       - ./docker/volumes/paddlex:/paddlex
+    environment:
+      - CUDA_VISIBLE_DEVICES=
+    command:
+      - paddlex
+      - --serve
+      - --pipeline
+      - PP-StructureV3.yaml
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --device
+      - cpu
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
       interval: 20s
       timeout: 10s
       retries: 5
       start_period: 60s
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              device_ids: ['0']
-              capabilities: [gpu]
     networks:
       - app-network
     restart: unless-stopped
