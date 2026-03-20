@@ -5,7 +5,7 @@ WORKDIR /root/PaddleX/paddlex
 # 安装 hpi-cpu，如您所指示
 RUN paddlex --install hpi-cpu
 RUN paddlex --install serving
-RUN python -m pip install --no-cache-dir "paddlex[ocr]==3.0.1"
+RUN python -m pip install --no-cache-dir "paddlex[ocr]==3.0.1" tiktoken
 
 COPY docker/PP-StructureV3.yaml /root/PaddleX/paddlex/PP-StructureV3.yaml
 
