@@ -1,6 +1,9 @@
 import json
 import os
 import threading
+import time
+from atexit import register as atexit_register
+from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -18,16 +21,31 @@ class LLMMetricsRecorder:
     """
 
     def __init__(self) -> None:
+        self.enabled = os.getenv("LLM_METRICS_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+        if not self.enabled:
+            self.metrics_path = Path("/dev/null")
+            self._lock = threading.Lock()
+            self._data = {"version": 1, "updated_at": _utc_now_iso(), "totals": {}, "models": {}}
+            return
+
         save_dir = os.getenv("SAVE_DIR", "saves")
         metrics_file = os.getenv("LLM_METRICS_FILE", f"{save_dir}/metrics/llm_summary.json")
         self.metrics_path = Path(metrics_file)
         self.metrics_path.parent.mkdir(parents=True, exist_ok=True)
 
         self._lock = threading.Lock()
+        self._flush_event = threading.Event()
+        self._stop_event = threading.Event()
         self._dirty_count = 0
-        self._flush_every = int(os.getenv("LLM_METRICS_FLUSH_EVERY", "20"))
+        self._flush_every = int(os.getenv("LLM_METRICS_FLUSH_EVERY", "200"))
+        self._flush_interval_sec = float(os.getenv("LLM_METRICS_FLUSH_INTERVAL_SEC", "30"))
+        self._dirty = False
+        self._last_flush_monotonic = time.monotonic()
 
         self._data = self._load_or_init()
+        self._flusher = threading.Thread(target=self._flush_loop, name="llm-metrics-flusher", daemon=True)
+        self._flusher.start()
+        atexit_register(self.shutdown)
 
     def _load_or_init(self) -> dict[str, Any]:
         if not self.metrics_path.exists():
@@ -180,21 +198,40 @@ class LLMMetricsRecorder:
             return 0
 
     def _flush_if_needed(self, force: bool = False) -> None:
-        self._dirty_count += 1
-        if not force and self._dirty_count < self._flush_every:
+        if force:
+            self._flush_event.set()
             return
-        self._flush()
+        if self._dirty_count >= self._flush_every:
+            self._flush_event.set()
 
     def _flush(self) -> None:
-        self._refresh_all_derived(self._data)
-        self._data["updated_at"] = _utc_now_iso()
+        with self._lock:
+            if not self._dirty:
+                return
+            data_to_write = deepcopy(self._data)
+            self._dirty = False
+            self._dirty_count = 0
+            self._last_flush_monotonic = time.monotonic()
+
+        self._refresh_all_derived(data_to_write)
+        data_to_write["updated_at"] = _utc_now_iso()
         tmp_path = self.metrics_path.with_suffix(".tmp")
         with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(self._data, f, ensure_ascii=False, indent=2)
+            json.dump(data_to_write, f, ensure_ascii=False, indent=2)
         os.replace(tmp_path, self.metrics_path)
-        self._dirty_count = 0
+
+    def _flush_loop(self) -> None:
+        while not self._stop_event.is_set():
+            self._flush_event.wait(timeout=self._flush_interval_sec)
+            self._flush_event.clear()
+            try:
+                self._flush()
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"LLM metrics background flush failed: {e}")
 
     def snapshot(self) -> dict[str, Any]:
+        if not self.enabled:
+            return {"status": "disabled", "version": 1, "updated_at": _utc_now_iso(), "totals": {}, "models": {}}
         with self._lock:
             # 返回内存快照即可，避免高频读取文件
             self._refresh_all_derived(self._data)
@@ -214,6 +251,8 @@ class LLMMetricsRecorder:
         rerank_docs: int = 0,
         error_text: str = "",
     ) -> None:
+        if not self.enabled:
+            return
         model_key = f"{kind}:{model_id}"
         totals_key = f"{kind}:__all__"
 
@@ -246,13 +285,27 @@ class LLMMetricsRecorder:
                     if error_text:
                         stats["last_error"] = error_text[:500]
                 stats["updated_at"] = _utc_now_iso()
-                self._refresh_derived_stats(stats)
-
+            self._dirty = True
+            self._dirty_count += 1
             self._flush_if_needed()
 
     def force_flush(self) -> None:
+        if not self.enabled:
+            return
         with self._lock:
+            self._dirty = True
             self._flush_if_needed(force=True)
+        self._flush()
+
+    def shutdown(self) -> None:
+        if not self.enabled:
+            return
+        self._stop_event.set()
+        self._flush_event.set()
+        try:
+            self._flush()
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"LLM metrics shutdown flush failed: {e}")
 
 
 llm_metrics = LLMMetricsRecorder()

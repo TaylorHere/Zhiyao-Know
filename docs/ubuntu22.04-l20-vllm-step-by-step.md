@@ -386,6 +386,12 @@ docker compose -f "$FILE" down
 
 - `saves/metrics/llm_summary.json`
 
+性能设计（避免成为请求瓶颈）：
+
+- 请求路径仅做内存累计（O(1) 计数更新）
+- 磁盘写入由后台线程异步 flush
+- 默认每 200 次更新或每 30 秒刷盘一次
+
 支持统计（按模型累计）：
 
 - 总请求数、成功/失败数
@@ -398,4 +404,10 @@ docker compose -f "$FILE" down
 ```bash
 curl -sS http://127.0.0.1/api/system/llm-metrics/summary
 ```
+
+可选环境变量：
+
+- `LLM_METRICS_ENABLED=true|false`
+- `LLM_METRICS_FLUSH_EVERY=200`
+- `LLM_METRICS_FLUSH_INTERVAL_SEC=30`
 

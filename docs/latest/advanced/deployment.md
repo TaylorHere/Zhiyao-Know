@@ -129,3 +129,4 @@ bash scripts/offline_bundle.sh import \
 - 指标文件：`saves/metrics/llm_summary.json`
 - 管理员接口：`GET /api/system/llm-metrics/summary`
 - 包含累计 `avg/mean` 字段（如延迟、token/请求）
+- 指标写盘为异步后台 flush，默认每 200 次更新或 30 秒落盘，避免阻塞请求链路
