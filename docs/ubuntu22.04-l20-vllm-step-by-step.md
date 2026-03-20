@@ -130,6 +130,65 @@ docker info | rg "Registry Mirrors" -n -A 4
 
 > 如你们企业有内网 Harbor/制品库镜像，请优先替换为企业镜像地址。
 
+### 3.5 调整 nofile（避免 `os error 24`）
+
+当出现 `No file descriptors available (os error 24)` 或 `Too many open files` 时，按以下步骤提升系统与容器的文件句柄上限。
+
+#### 3.5.1 提升 Docker 服务进程限制（关键）
+
+```bash
+sudo mkdir -p /etc/systemd/system/docker.service.d
+sudo tee /etc/systemd/system/docker.service.d/override.conf >/dev/null <<'EOF'
+[Service]
+LimitNOFILE=1048576
+EOF
+```
+
+#### 3.5.2 给容器设置默认 nofile
+
+> 如果 `/etc/docker/daemon.json` 已存在，请把 `default-ulimits` 合并进去，不要覆盖掉已有配置（如 `registry-mirrors`）。
+
+可直接改成如下结构（保留你现有的镜像加速配置）：
+
+```json
+{
+  "registry-mirrors": [
+    "https://docker.m.daocloud.io",
+    "https://dockerproxy.cn"
+  ],
+  "default-ulimits": {
+    "nofile": {
+      "Name": "nofile",
+      "Soft": 1048576,
+      "Hard": 1048576
+    }
+  }
+}
+```
+
+#### 3.5.3 重载并重启 Docker
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+```
+
+#### 3.5.4 验证是否生效
+
+```bash
+docker info | rg -i "Default Ulimits|nofile"
+docker run --rm alpine sh -c 'ulimit -n'
+```
+
+> 若你只想对单个服务生效，也可在 `docker-compose*.yml` 的服务下增加：
+>
+> ```yaml
+> ulimits:
+>   nofile:
+>     soft: 262144
+>     hard: 262144
+> ```
+
 ---
 
 ## 4. 安装 NVIDIA Container Toolkit（让容器可用 GPU）
