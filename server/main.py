@@ -6,6 +6,7 @@ import uvicorn
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from prometheus_fastapi_instrumentator import Instrumentator
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from server.routers import router
@@ -122,6 +123,14 @@ app.add_middleware(AccessLogMiddleware)
 # 添加鉴权中间件
 app.add_middleware(LoginRateLimitMiddleware)
 app.add_middleware(AuthMiddleware)
+
+# Prometheus metrics endpoint: /metrics
+Instrumentator(
+    should_group_status_codes=True,
+    should_ignore_untemplated=True,
+    should_group_untemplated=False,
+    excluded_handlers=["/metrics", "/api/system/health", "/api/auth/token"],
+).instrument(app).expose(app, include_in_schema=False, endpoint="/metrics")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=5050, threads=10, workers=10, reload=True)

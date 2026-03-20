@@ -63,6 +63,11 @@ class AgentConfigUpdate(BaseModel):
 
 
 chat = APIRouter(prefix="/chat", tags=["chat"])
+STREAM_RESPONSE_HEADERS = {
+    # Disable proxy buffering to preserve token-level streaming.
+    "X-Accel-Buffering": "no",
+    "Cache-Control": "no-cache",
+}
 
 # =============================================================================
 # > === 智能体管理分组 ===
@@ -391,7 +396,8 @@ async def chat_agent(
             current_user=current_user,
             db=db,
         ),
-        media_type="application/json",
+        media_type="application/x-ndjson",
+        headers=STREAM_RESPONSE_HEADERS,
     )
 
 
@@ -446,7 +452,8 @@ async def resume_agent_chat(
             current_user=current_user,
             db=db,
         ),
-        media_type="application/json",
+        media_type="application/x-ndjson",
+        headers=STREAM_RESPONSE_HEADERS,
     )
 
 

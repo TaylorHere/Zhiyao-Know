@@ -62,12 +62,33 @@ services:
       - "80:80"
     depends_on:
       - api
+      - prometheus
     networks:
       - app-network
     environment:
       - NODE_ENV=production
       - VITE_API_URL=http://api:5050
     command: nginx -g "daemon off;"
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=24h
+      - --storage.tsdb.retention.size=512MB
+      - --storage.tsdb.wal-compression
+      - --query.max-concurrency=4
+      - --query.max-samples=200000
+    volumes:
+      - ./docker/prometheus/prometheus.prod.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/volumes/prometheus:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - app-network
     restart: unless-stopped
 
   graph:
@@ -86,6 +107,8 @@ services:
       - NEO4J_AUTH=${NEO4J_USERNAME:-neo4j}/${NEO4J_PASSWORD:-0123456789}
       - NEO4J_server_bolt_listen__address=0.0.0.0:7687
       - NEO4J_server_http_listen__address=0.0.0.0:7474
+      - NEO4J_server_metrics_prometheus_enabled=true
+      - NEO4J_server_metrics_prometheus_endpoint=0.0.0.0:2004
       - ENTITY_EMBEDDING=true
     networks:
       - app-network
@@ -118,6 +141,7 @@ services:
     environment:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_PROMETHEUS_AUTH_TYPE: public
     volumes:
       - ./docker/volumes/milvus/minio:/minio_data
       - ./docker/volumes/milvus/minio_config:/root/.minio
@@ -175,6 +199,18 @@ services:
       interval: 5s
       timeout: 3s
       retries: 30
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: postgres-exporter
+    environment:
+      - DATA_SOURCE_NAME=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-yuxi_know}?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - app-network
     restart: unless-stopped

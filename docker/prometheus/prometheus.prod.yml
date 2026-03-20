@@ -1,0 +1,70 @@
+global:
+  scrape_interval: 30s
+  scrape_timeout: 10s
+  evaluation_interval: 30s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["prometheus:9090"]
+    sample_limit: 1500
+
+  - job_name: api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api:5050"]
+    sample_limit: 4000
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: ".*_bucket"
+        action: drop
+
+  - job_name: postgres
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+    sample_limit: 3000
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: ".*_bucket"
+        action: drop
+
+  - job_name: neo4j
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["graph:2004"]
+    sample_limit: 4000
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: ".*_bucket"
+        action: drop
+
+  - job_name: milvus
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["milvus:9091"]
+    sample_limit: 5000
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: ".*_bucket"
+        action: drop
+
+  - job_name: etcd
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["etcd:2379"]
+    sample_limit: 4000
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: ".*_bucket"
+        action: drop
+
+  - job_name: minio
+    metrics_path: /minio/v2/metrics/cluster
+    static_configs:
+      - targets: ["minio:9000"]
+    sample_limit: 4000
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: ".*_bucket"
+        action: drop

@@ -153,7 +153,7 @@ docker compose "${compose_args[@]}" ps || true
 echo
 
 echo "== Service State Checks =="
-for svc in web api crawler crawler-worker postgres milvus graph minio etcd crawler-redis; do
+for svc in web api crawler crawler-worker postgres postgres-exporter milvus graph minio etcd app-redis redis-exporter prometheus; do
   check_service_state "${svc}"
 done
 echo
@@ -163,7 +163,10 @@ check_http_status "nginx-api-health" "${BASE_URL}/api/system/health" "200"
 check_http_status "nginx-crawler-health" "${BASE_URL}/crawler-api/health" "200"
 check_http_status "api-health-direct" "http://127.0.0.1:5050/api/system/health" "200"
 check_http_status "crawler-health-direct" "http://127.0.0.1:18060/api/v1/health" "200"
+check_http_status "api-metrics" "http://127.0.0.1:5050/metrics" "200"
+check_http_status "crawler-metrics" "http://127.0.0.1:18060/metrics" "200"
 check_http_status "auth-guard" "${BASE_URL}/api/knowledge/databases?page=1&page_size=1" "401"
+check_http_status "prometheus-health" "http://127.0.0.1:9090/-/healthy" "200"
 echo
 
 load_admin_from_env_file

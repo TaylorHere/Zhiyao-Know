@@ -141,17 +141,27 @@ bash scripts/offline_bundle.sh import \
 
 对应编排文件（最新）：
 
-- `docker-compose.remote.l20.qwen25.vllm.yml`（整套，含 OCR）
+- `docker-compose.l20.qwen25.vllm.yml`（整套，含 OCR）
 - `docker-compose.model-suite.l20.qwen25.vllm.yml`（模型套件，不含 OCR）
-- `docker-compose.remote.l20.qwen35.vllm.yml`（整套，含 OCR）
+- `docker-compose.l20.qwen35.vllm.yml`（整套，含 OCR）
 - `docker-compose.model-suite.l20.qwen35.vllm.yml`（模型套件，不含 OCR）
 
 说明：以上四个编排均包含 `litellm-gateway`（LiteLLM，端口 `8010`），用于在业务与 vLLM 之间做 Token 感知限流（RPM/TPM）。
 并发与限流默认值已按双 L20 场景预设（Qwen2.5 更保守，Qwen3.5 更高吞吐）。
 
-另外，系统提供轻量累计指标（不保留时序）用于长期调优：
+另外，系统已接入 Prometheus 用于统一采集可观测指标：
 
-- 指标文件：`saves/metrics/llm_summary.json`
-- 管理员接口：`GET /api/system/llm-metrics/summary`
-- 包含累计 `avg/mean` 字段（如延迟、token/请求）
-- 指标写盘为异步后台 flush，默认每 200 次更新或 30 秒落盘，避免阻塞请求链路
+- 访问地址：`http://<host>:9090`
+- API 指标端点：`http://<host>:5050/metrics`
+- Crawler 指标端点：`http://<host>:18060/metrics`
+- LiteLLM 指标端点（相关编排启用时）：`http://<host>:8010/metrics`
+- vLLM 指标端点（相关编排启用时）：`http://<host>:8000/metrics`、`http://<host>:8001/metrics`、`http://<host>:8002/metrics`
+- 基础设施指标（Exporter/原生端点）：Redis、Postgres、Neo4j、Milvus、etcd、MinIO
+
+为控制 Prometheus 内存占用，默认已配置：
+
+- 抓取周期 `30s`
+- 保留时长 `24h`
+- 存储上限 `512MB`
+- 开启 WAL 压缩与查询样本/并发限制
+- 默认丢弃 histogram bucket 时序（保留 count/sum）

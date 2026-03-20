@@ -7,3 +7,4 @@ apscheduler
 crawl4ai
 celery
 redis
+prometheus-fastapi-instrumentator>=7.1.0

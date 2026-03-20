@@ -1,11 +1,11 @@
 model_list:
-  - model_name: Qwen2.5-72B-Instruct-AWQ
+  - model_name: Qwen3.5-35B-A3B-FP8
     litellm_params:
-      model: openai/Qwen2.5-72B-Instruct-AWQ
-      api_base: http://vllm-qwen25-72b-awq:8000/v1
+      model: openai/Qwen3.5-35B-A3B-FP8
+      api_base: http://vllm-qwen35-35b-a3b-fp8:8000/v1
       api_key: no_api_key
-      rpm: 36
-      tpm: 90000
+      rpm: 72
+      tpm: 180000
 
   - model_name: Qwen3-Embedding-0.6B
     litellm_params:
@@ -27,9 +27,14 @@ router_settings:
   routing_strategy: simple-shuffle
   optional_pre_call_checks:
     - enforce_model_rate_limits
+  redis_host: os.environ/REDIS_HOST
+  redis_port: os.environ/REDIS_PORT
+  redis_password: os.environ/REDIS_PASSWORD
+  redis_db: os.environ/REDIS_DB
 
 litellm_settings:
   set_verbose: false
   drop_params: true
+  request_timeout: 600
   callbacks:
     - prometheus

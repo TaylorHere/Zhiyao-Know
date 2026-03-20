@@ -4,7 +4,7 @@ services:
       file: docker-compose.yaml
       service: api
     environment:
-      - VLLM_CHAT_BASE_URL=${VLLM_CHAT_BASE_URL:-http://litellm-gateway:8010/v1}
+      - VLLM_CHAT_BASE_URL=${VLLM_CHAT_BASE_URL:-http://litellm-gateway:8010/queue}
       - VLLM_EMBED_BASE_URL=${VLLM_EMBED_BASE_URL:-http://litellm-gateway:8010/v1/embeddings}
       - VLLM_RERANK_BASE_URL=${VLLM_RERANK_BASE_URL:-http://litellm-gateway:8010/v1/rerank}
 
@@ -18,10 +18,15 @@ services:
       file: docker-compose.yaml
       service: crawler-worker
 
-  crawler-redis:
+  app-redis:
     extends:
       file: docker-compose.yaml
-      service: crawler-redis
+      service: app-redis
+
+  redis-exporter:
+    extends:
+      file: docker-compose.yaml
+      service: redis-exporter
 
   web:
     extends:
@@ -53,6 +58,19 @@ services:
       file: docker-compose.yaml
       service: postgres
 
+  postgres-exporter:
+    extends:
+      file: docker-compose.yaml
+      service: postgres-exporter
+
+  prometheus:
+    extends:
+      file: docker-compose.yaml
+      service: prometheus
+    volumes:
+      - ./docker/prometheus/prometheus.l20.qwen25.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/volumes/prometheus:/prometheus
+
   litellm-gateway:
     build:
       context: .
@@ -68,8 +86,13 @@ services:
       - /app/config.yaml
       - --port
       - "8010"
+    environment:
+      - REDIS_HOST=${LITELLM_REDIS_HOST:-app-redis}
+      - REDIS_PORT=${LITELLM_REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${LITELLM_REDIS_PASSWORD:-}
+      - REDIS_DB=${LITELLM_REDIS_DB:-1}
     volumes:
-      - ./docker/litellm.qwen35.yaml:/app/config.yaml:ro
+      - ./docker/litellm.qwen25.queue.yaml:/app/config.yaml:ro
     ports:
       - "8010:8010"
     healthcheck:
@@ -79,37 +102,40 @@ services:
       retries: 10
       start_period: 20s
     depends_on:
-      - vllm-qwen35-35b-a3b-fp8
+      - vllm-qwen25-72b-awq
       - vllm-qwen3-embedding-cpu
       - vllm-qwen3-rerank-cpu
+      - app-redis
     networks:
       - app-network
     restart: unless-stopped
 
-  vllm-qwen35-35b-a3b-fp8:
+  vllm-qwen25-72b-awq:
     image: ${VLLM_OPENAI_IMAGE:-docker.m.daocloud.io/vllm/vllm-openai:latest}
-    container_name: vllm-qwen35-35b-a3b-fp8
+    container_name: vllm-qwen25-72b-awq
     command:
       - --model
-      - /models/Qwen/Qwen3.5-35B-A3B-FP8
+      - /models/Qwen/Qwen2.5-72B-Instruct-AWQ
       - --served-model-name
-      - Qwen3.5-35B-A3B-FP8
+      - Qwen2.5-72B-Instruct-AWQ
       - --host
       - 0.0.0.0
       - --port
       - "8000"
       - --tensor-parallel-size
       - "2"
+      - --quantization
+      - awq
       - --dtype
-      - auto
+      - half
       - --gpu-memory-utilization
-      - "0.90"
+      - "0.86"
       - --max-model-len
-      - "24576"
+      - "16384"
       - --max-num-seqs
-      - "12"
+      - "8"
       - --max-num-batched-tokens
-      - "24576"
+      - "16384"
       - --trust-remote-code
     volumes:
       - ${MODEL_DIR:-./models}:/models

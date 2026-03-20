@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from core.database import init_db
 from core.scheduler import start_scheduler, shutdown_scheduler
@@ -30,6 +31,14 @@ app.include_router(logs_router)
 app.include_router(jobs_router)
 app.include_router(results_router)
 app.include_router(dashboard_router)
+
+# Prometheus metrics endpoint: /metrics
+Instrumentator(
+    should_group_status_codes=True,
+    should_ignore_untemplated=True,
+    should_group_untemplated=False,
+    excluded_handlers=["/metrics", "/api/v1/health"],
+).instrument(app).expose(app, include_in_schema=False, endpoint="/metrics")
 
 
 @app.on_event("startup")

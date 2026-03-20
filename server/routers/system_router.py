@@ -207,20 +207,6 @@ async def check_ocr_services_health(current_user: User = Depends(get_admin_user)
         }
 
 
-@system.get("/llm-metrics/summary")
-async def get_llm_metrics_summary(current_user: User = Depends(get_admin_user)):
-    """
-    获取 LLM 累计汇总指标（无时序，适合长期调优参考）。
-    """
-    try:
-        from src.metrics import llm_metrics
-
-        return {"status": "success", "metrics": llm_metrics.snapshot()}
-    except Exception as e:
-        logger.error(f"获取LLM汇总指标失败: {str(e)}")
-        return {"status": "error", "metrics": {}, "message": f"获取LLM汇总指标失败: {str(e)}"}
-
-
 # =============================================================================
 # === 聊天模型状态检查分组 ===
 # =============================================================================

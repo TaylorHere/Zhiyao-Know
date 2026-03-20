@@ -13,9 +13,9 @@
 
 | 场景 | 编排文件 | 是否包含 OCR |
 |---|---|---|
-| Qwen2.5 整套拉起 | `docker-compose.remote.l20.qwen25.vllm.yml` | 是（`paddlex`） |
+| Qwen2.5 整套拉起 | `docker-compose.l20.qwen25.vllm.yml` | 是（`paddlex`） |
 | Qwen2.5 仅模型套件 | `docker-compose.model-suite.l20.qwen25.vllm.yml` | 否 |
-| Qwen3.5 整套拉起 | `docker-compose.remote.l20.qwen35.vllm.yml` | 是（`paddlex`） |
+| Qwen3.5 整套拉起 | `docker-compose.l20.qwen35.vllm.yml` | 是（`paddlex`） |
 | Qwen3.5 仅模型套件 | `docker-compose.model-suite.l20.qwen35.vllm.yml` | 否 |
 
 以上四个文件均内置 `litellm-gateway`（LiteLLM），作为业务与模型服务之间的 **Token 感知网关**，默认端口 `8010`。
@@ -313,10 +313,10 @@ PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn
 
 ```bash
 cd /opt/yuxi-know/Zhiyao-Know
-FILE=docker-compose.remote.l20.qwen25.vllm.yml
+FILE=docker-compose.l20.qwen25.vllm.yml
 # 可替换为：
 # docker-compose.model-suite.l20.qwen25.vllm.yml
-# docker-compose.remote.l20.qwen35.vllm.yml
+# docker-compose.l20.qwen35.vllm.yml
 # docker-compose.model-suite.l20.qwen35.vllm.yml
 
 docker compose -f "$FILE" up -d
@@ -549,34 +549,24 @@ docker compose -f "$FILE" down
   - `--max-num-seqs 12`
   - `--max-num-batched-tokens 24576`
 
-## 15. 轻量长期观测（仅最终汇总，无时序）
+## 15. Prometheus 可观测性（低内存配置）
 
-系统已内置 LLM 累计汇总指标记录，默认落盘：
+当前编排已内置 Prometheus（端口 `9090`），用于统一采集系统指标：
 
-- `saves/metrics/llm_summary.json`
+- Prometheus：`http://127.0.0.1:9090`
+- API 指标：`http://127.0.0.1:5050/metrics`
+- Crawler 指标：`http://127.0.0.1:18060/metrics`
+- LiteLLM 指标：`http://127.0.0.1:8010/metrics`
+- vLLM 指标：`http://127.0.0.1:8000/metrics`、`http://127.0.0.1:8001/metrics`、`http://127.0.0.1:8002/metrics`
+- 基础设施指标：Redis、Postgres、Neo4j、Milvus、etcd、MinIO
 
-性能设计（避免成为请求瓶颈）：
+默认低内存参数：
 
-- 请求路径仅做内存累计（O(1) 计数更新）
-- 磁盘写入由后台线程异步 flush
-- 默认每 200 次更新或每 30 秒刷盘一次
-
-支持统计（按模型累计）：
-
-- 总请求数、成功/失败数
-- 429 次数、5xx 次数
-- 延迟总和/最大值/分桶 + `latency_ms_avg/latency_ms_mean`
-- token 累计（可用时） + `prompt/completion/total` 的 `avg/mean`
-
-查看方式（管理员接口）：
-
-```bash
-curl -sS http://127.0.0.1/api/system/llm-metrics/summary
-```
-
-可选环境变量：
-
-- `LLM_METRICS_ENABLED=true|false`
-- `LLM_METRICS_FLUSH_EVERY=200`
-- `LLM_METRICS_FLUSH_INTERVAL_SEC=30`
+- `scrape_interval=30s`
+- `retention.time=24h`
+- `retention.size=512MB`
+- `wal-compression` 开启
+- `query.max-concurrency=4`
+- `query.max-samples=200000`
+- 丢弃 histogram bucket 时序，减少高基数占用
 

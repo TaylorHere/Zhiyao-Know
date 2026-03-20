@@ -27,9 +27,14 @@ router_settings:
   routing_strategy: simple-shuffle
   optional_pre_call_checks:
     - enforce_model_rate_limits
+  redis_host: os.environ/REDIS_HOST
+  redis_port: os.environ/REDIS_PORT
+  redis_password: os.environ/REDIS_PASSWORD
+  redis_db: os.environ/REDIS_DB
 
 litellm_settings:
   set_verbose: false
   drop_params: true
+  request_timeout: 600
   callbacks:
     - prometheus
