@@ -38,7 +38,7 @@
       </div>
     </a-modal>
 
-    <!-- 智能体聊天界面 -->
+    <!-- 智能体聊天界1 -->
     <AgentChatComponent ref="chatComponentRef" :agent-id="agentId" :single-mode="true">
       <template #header-left>
         <div type="button" class="agent-nav-btn" @click="openAgentModal">
