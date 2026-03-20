@@ -7,6 +7,8 @@
 - 重排序模型（Reranker）
 """
 
+import os
+
 from pydantic import BaseModel, Field
 
 
@@ -38,6 +40,20 @@ class RerankerInfo(BaseModel):
     name: str = Field(..., description="模型名称")
     base_url: str = Field(..., description="API 基础 URL")
     api_key: str = Field(..., description="API Key 或环境变量名")
+
+
+# ============================================================
+# 本地 vLLM 端点（支持环境变量覆盖）
+# ============================================================
+
+LOCAL_VLLM_CHAT_BASE_URL = os.getenv("VLLM_CHAT_BASE_URL", "http://localhost:8000/v1")
+LOCAL_VLLM_CHAT_MODEL = os.getenv("VLLM_CHAT_MODEL", "Qwen2.5-72B-Instruct-AWQ")
+
+LOCAL_VLLM_EMBED_BASE_URL = os.getenv("VLLM_EMBED_BASE_URL", "http://localhost:8001/v1/embeddings")
+LOCAL_VLLM_EMBED_MODEL = os.getenv("VLLM_EMBED_MODEL", "Qwen3-Embedding-0.6B")
+
+LOCAL_VLLM_RERANK_BASE_URL = os.getenv("VLLM_RERANK_BASE_URL", "http://localhost:8002/v1/rerank")
+LOCAL_VLLM_RERANK_MODEL = os.getenv("VLLM_RERANK_MODEL", "qwen3-rerank")
 
 
 # ============================================================
@@ -150,6 +166,14 @@ DEFAULT_CHAT_MODEL_PROVIDERS: dict[str, ChatModelProvider] = {
         env="MODELSCOPE_ACCESS_TOKEN",
         models=["Qwen/Qwen3-32B", "deepseek-ai/DeepSeek-V3.2"],
     ),
+    "vllm-local": ChatModelProvider(
+        name="vLLM Local",
+        url="https://docs.vllm.ai",
+        base_url=LOCAL_VLLM_CHAT_BASE_URL,
+        default=LOCAL_VLLM_CHAT_MODEL,
+        env="NO_API_KEY",
+        models=[LOCAL_VLLM_CHAT_MODEL],
+    ),
 }
 
 
@@ -181,9 +205,9 @@ DEFAULT_EMBED_MODELS: dict[str, EmbedModelInfo] = {
     ),
     "vllm/Qwen/Qwen3-Embedding-0.6B": EmbedModelInfo(
         model_id="vllm/Qwen/Qwen3-Embedding-0.6B",
-        name="Qwen3-Embedding-0.6B",
+        name=LOCAL_VLLM_EMBED_MODEL,
         dimension=1024,
-        base_url="http://localhost:8000/v1/embeddings",
+        base_url=LOCAL_VLLM_EMBED_BASE_URL,
         api_key="no_api_key",
     ),
     "ollama/nomic-embed-text": EmbedModelInfo(
@@ -236,8 +260,8 @@ DEFAULT_RERANKERS: dict[str, RerankerInfo] = {
         api_key="DASHSCOPE_API_KEY",
     ),
     "vllm/BAAI/bge-reranker-v2-m3": RerankerInfo(
-        name="BAAI/bge-reranker-v2-m3",
-        base_url="http://localhost:8000/v1/rerank",
+        name=LOCAL_VLLM_RERANK_MODEL,
+        base_url=LOCAL_VLLM_RERANK_BASE_URL,
         api_key="no_api_key",
     ),
 }

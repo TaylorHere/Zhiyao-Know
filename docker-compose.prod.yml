@@ -26,11 +26,17 @@ services:
       - MINERU_VL_SERVER=${MINERU_VL_SERVER:-http://mineru-vllm-server:30000}
       - MINERU_API_URI=${MINERU_API_URI:-http://mineru-api:30001}
       - PADDLEX_URI=${PADDLEX_URI:-http://paddlex:8080}
+      - VLLM_CHAT_BASE_URL=${VLLM_CHAT_BASE_URL:-http://host.docker.internal:8000/v1}
+      - VLLM_CHAT_MODEL=${VLLM_CHAT_MODEL:-Qwen2.5-72B-Instruct-AWQ}
+      - VLLM_EMBED_BASE_URL=${VLLM_EMBED_BASE_URL:-http://host.docker.internal:8001/v1/embeddings}
+      - VLLM_EMBED_MODEL=${VLLM_EMBED_MODEL:-Qwen3-Embedding-0.6B}
+      - VLLM_RERANK_BASE_URL=${VLLM_RERANK_BASE_URL:-http://host.docker.internal:8002/v1/rerank}
+      - VLLM_RERANK_MODEL=${VLLM_RERANK_MODEL:-qwen3-rerank}
       - MINIO_URI=${MINIO_URI:-http://milvus-minio:9000}
       - MODEL_DIR_IN_DOCKER=/models
       - RUNNING_IN_DOCKER=true
-      - NO_PROXY=localhost,127.0.0.1,milvus,graph,milvus-minio,milvus-etcd,etcd,minio,mineru,paddlex,api.siliconflow.cn
-      - no_proxy=localhost,127.0.0.1,milvus,graph,milvus-minio,milvus-etcd,etcd,minio,mineru,paddlex,api.siliconflow.cn
+      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,milvus,graph,milvus-minio,milvus-etcd,etcd,minio,mineru,paddlex,api.siliconflow.cn
+      - no_proxy=localhost,127.0.0.1,host.docker.internal,milvus,graph,milvus-minio,milvus-etcd,etcd,minio,mineru,paddlex,api.siliconflow.cn
     command: uvicorn server.main:app --host 0.0.0.0 --port 5050
     restart: unless-stopped
     healthcheck:

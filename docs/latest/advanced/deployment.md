@@ -30,6 +30,15 @@ cp .env.template .env.prod
 - `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY`: 修改默认密钥
 - `SILICONFLOW_API_KEY` 等模型密钥
 
+如果你使用本地 vLLM 模型套件（聊天 / Embedding / Rerank），也可以在 `docker-compose.prod.yml` 的 `api.environment` 中通过以下变量覆盖端点：
+
+- `VLLM_CHAT_BASE_URL`（默认：`http://host.docker.internal:8000/v1`）
+- `VLLM_CHAT_MODEL`（默认：`Qwen2.5-72B-Instruct-AWQ`）
+- `VLLM_EMBED_BASE_URL`（默认：`http://host.docker.internal:8001/v1/embeddings`）
+- `VLLM_EMBED_MODEL`（默认：`Qwen3-Embedding-0.6B`）
+- `VLLM_RERANK_BASE_URL`（默认：`http://host.docker.internal:8002/v1/rerank`）
+- `VLLM_RERANK_MODEL`（默认：`qwen3-rerank`）
+
 ### 2. 启动服务
 
 使用 `docker-compose.prod.yml` 文件启动生产环境：
