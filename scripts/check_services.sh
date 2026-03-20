@@ -153,7 +153,7 @@ docker compose "${compose_args[@]}" ps || true
 echo
 
 echo "== Service State Checks =="
-for svc in web api crawler crawler-worker postgres milvus graph minio etcd crawler-redis; do
+for svc in web api crawler crawler-worker postgres milvus graph minio etcd app-redis; do
   check_service_state "${svc}"
 done
 echo

@@ -58,7 +58,7 @@ services:
       - CRAWLER_DATABASE_URL=${CRAWLER_DATABASE_URL:-sqlite+aiosqlite:////app/data/crawler.db}
       - CRAWLER_WORKER_CONCURRENCY=${CRAWLER_WORKER_CONCURRENCY:-2}
       - CRAWLER_USE_CELERY=${CRAWLER_USE_CELERY:-true}
-      - CRAWLER_REDIS_URL=${CRAWLER_REDIS_URL:-redis://crawler-redis:6379/0}
+      - CRAWLER_REDIS_URL=${CRAWLER_REDIS_URL:-redis://app-redis:6379/0}
     volumes:
       - ./.env:/app/.env
       - ./crawler_data:/app/data
@@ -75,7 +75,7 @@ services:
       retries: 8
       start_period: 60s
     depends_on:
-      crawler-redis:
+      app-redis:
         condition: service_started
 
   crawler-worker:
@@ -87,7 +87,7 @@ services:
     environment:
       - CRAWLER_DATABASE_URL=${CRAWLER_DATABASE_URL:-sqlite+aiosqlite:////app/data/crawler.db}
       - CRAWLER_USE_CELERY=${CRAWLER_USE_CELERY:-true}
-      - CRAWLER_REDIS_URL=${CRAWLER_REDIS_URL:-redis://crawler-redis:6379/0}
+      - CRAWLER_REDIS_URL=${CRAWLER_REDIS_URL:-redis://app-redis:6379/0}
     volumes:
       - ./.env:/app/.env
       - ./crawler_data:/app/data
@@ -96,12 +96,12 @@ services:
     command: sh -c "mkdir -p /app/data && celery -A core.celery_app.celery_app worker --loglevel=info --concurrency=2"
     restart: unless-stopped
     depends_on:
-      crawler-redis:
+      app-redis:
         condition: service_started
 
-  crawler-redis:
+  app-redis:
     image: redis:7-alpine
-    container_name: crawler-redis
+    container_name: app-redis
     networks:
       - app-network
     restart: unless-stopped

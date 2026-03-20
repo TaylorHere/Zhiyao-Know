@@ -18,10 +18,10 @@ services:
       file: docker-compose.yaml
       service: crawler-worker
 
-  crawler-redis:
+  app-redis:
     extends:
       file: docker-compose.yaml
-      service: crawler-redis
+      service: app-redis
 
   web:
     extends:
@@ -69,7 +69,7 @@ services:
       - --port
       - "8010"
     environment:
-      - REDIS_HOST=${LITELLM_REDIS_HOST:-crawler-redis}
+      - REDIS_HOST=${LITELLM_REDIS_HOST:-app-redis}
       - REDIS_PORT=${LITELLM_REDIS_PORT:-6379}
       - REDIS_PASSWORD=${LITELLM_REDIS_PASSWORD:-}
       - REDIS_DB=${LITELLM_REDIS_DB:-1}
@@ -87,7 +87,7 @@ services:
       - vllm-qwen35-35b-a3b-fp8
       - vllm-qwen3-embedding-cpu
       - vllm-qwen3-rerank-cpu
-      - crawler-redis
+      - app-redis
     networks:
       - app-network
     restart: unless-stopped
