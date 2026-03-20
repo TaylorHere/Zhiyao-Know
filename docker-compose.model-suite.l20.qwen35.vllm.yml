@@ -1,0 +1,156 @@
+services:
+  vllm-qwen35-35b-a3b-fp8:
+    image: ${VLLM_OPENAI_IMAGE:-docker.m.daocloud.io/vllm/vllm-openai:latest}
+    container_name: vllm-qwen35-35b-a3b-fp8
+    command:
+      - --model
+      - /models/Qwen/Qwen3.5-35B-A3B-FP8
+      - --served-model-name
+      - Qwen3.5-35B-A3B-FP8
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --tensor-parallel-size
+      - "2"
+      - --dtype
+      - auto
+      - --gpu-memory-utilization
+      - "0.90"
+      - --max-model-len
+      - "24576"
+      - --max-num-seqs
+      - "12"
+      - --max-num-batched-tokens
+      - "24576"
+      - --trust-remote-code
+    volumes:
+      - ${MODEL_DIR:-./models}:/models
+      - ./docker/volumes/vllm/hf-cache:/root/.cache/huggingface
+    ports:
+      - "8000:8000"
+    ipc: host
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0", "1"]
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 20
+      start_period: 300s
+    networks:
+      - model-network
+    restart: unless-stopped
+
+  vllm-qwen3-embedding-cpu:
+    image: ${VLLM_OPENAI_CPU_IMAGE:-docker.m.daocloud.io/vllm/vllm-openai-cpu:latest}
+    container_name: vllm-qwen3-embedding-cpu
+    command:
+      - --model
+      - /models/Qwen/Qwen3-Embedding-0.6B
+      - --task
+      - embed
+      - --served-model-name
+      - Qwen3-Embedding-0.6B
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8001"
+      - --max-model-len
+      - "4096"
+      - --trust-remote-code
+    environment:
+      - CUDA_VISIBLE_DEVICES=
+    volumes:
+      - ${MODEL_DIR:-./models}:/models
+      - ./docker/volumes/vllm/hf-cache:/root/.cache/huggingface
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8001/health || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 20
+      start_period: 120s
+    networks:
+      - model-network
+    restart: unless-stopped
+
+  vllm-qwen3-rerank-cpu:
+    image: ${VLLM_OPENAI_CPU_IMAGE:-docker.m.daocloud.io/vllm/vllm-openai-cpu:latest}
+    container_name: vllm-qwen3-rerank-cpu
+    command:
+      - --model
+      - /models/Qwen/Qwen3-Reranker-0.6B
+      - --task
+      - score
+      - --served-model-name
+      - qwen3-rerank
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8002"
+      - --max-model-len
+      - "4096"
+      - --trust-remote-code
+    environment:
+      - CUDA_VISIBLE_DEVICES=
+    volumes:
+      - ${MODEL_DIR:-./models}:/models
+      - ./docker/volumes/vllm/hf-cache:/root/.cache/huggingface
+    ports:
+      - "8002:8002"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8002/health || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 20
+      start_period: 120s
+    networks:
+      - model-network
+    restart: unless-stopped
+
+  litellm-gateway:
+    build:
+      context: .
+      dockerfile: docker/litellm.Dockerfile
+      args:
+        PYTHON_BASE_IMAGE: ${PYTHON_BASE_IMAGE:-docker.m.daocloud.io/python:3.11-slim}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-pypi.tuna.tsinghua.edu.cn}
+    image: ${LITELLM_IMAGE:-litellm-proxy:cn}
+    container_name: litellm-gateway
+    command:
+      - --config
+      - /app/config.yaml
+      - --port
+      - "8010"
+    volumes:
+      - ./docker/litellm.qwen35.yaml:/app/config.yaml:ro
+    ports:
+      - "8010:8010"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8010/health/readiness || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+    depends_on:
+      - vllm-qwen35-35b-a3b-fp8
+      - vllm-qwen3-embedding-cpu
+      - vllm-qwen3-rerank-cpu
+    networks:
+      - model-network
+    restart: unless-stopped
+
+networks:
+  model-network:
+    driver: bridge

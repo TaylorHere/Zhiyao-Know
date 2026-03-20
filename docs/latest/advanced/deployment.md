@@ -30,6 +30,40 @@ cp .env.template .env.prod
 - `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY`: 修改默认密钥
 - `SILICONFLOW_API_KEY` 等模型密钥
 
+如果你使用本地 vLLM 模型套件（聊天 / Embedding / Rerank），也可以在 `docker-compose.prod.yml` 的 `api.environment` 中通过以下变量覆盖端点：
+
+- `VLLM_CHAT_BASE_URL`（默认：`http://host.docker.internal:8000/v1`）
+- `VLLM_CHAT_MODEL`（默认：`Qwen2.5-72B-Instruct-AWQ`）
+- `VLLM_EMBED_BASE_URL`（默认：`http://host.docker.internal:8001/v1/embeddings`）
+- `VLLM_EMBED_MODEL`（默认：`Qwen3-Embedding-0.6B`）
+- `VLLM_RERANK_BASE_URL`（默认：`http://host.docker.internal:8002/v1/rerank`）
+- `VLLM_RERANK_MODEL`（默认：`qwen3-rerank`）
+
+### 1.1 中国大陆镜像源建议
+
+模型下载建议优先使用 **ModelScope（方案一）**；Docker 镜像建议配置国内镜像加速：
+
+```bash
+sudo mkdir -p /etc/docker
+sudo tee /etc/docker/daemon.json >/dev/null <<'EOF'
+{
+  "registry-mirrors": [
+    "https://docker.m.daocloud.io",
+    "https://dockerproxy.cn"
+  ]
+}
+EOF
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+```
+
+在 qwen25/qwen35 的 compose 中，还可通过环境变量覆盖镜像来源：
+
+- `VLLM_OPENAI_IMAGE`
+- `VLLM_OPENAI_CPU_IMAGE`
+- `PYTHON_BASE_IMAGE`（LiteLLM 构建基础镜像）
+- `PIP_INDEX_URL` / `PIP_TRUSTED_HOST`（LiteLLM 构建时 Python 包源）
+
 ### 2. 启动服务
 
 使用 `docker-compose.prod.yml` 文件启动生产环境：
@@ -90,3 +124,34 @@ bash scripts/offline_bundle.sh import \
 详细步骤和交付清单见：
 
 - `docs/离线交付部署说明.md`
+
+## Ubuntu 22.04 + 双 L20 + vLLM 专用部署
+
+如果是从 Ubuntu 22.04 LTS 裸机开始，并需要按如下方式部署：
+
+- Qwen2.5-72B-Instruct-AWQ（vLLM，GPU 双卡）
+- 或 Qwen3.5-35B-A3B-FP8（vLLM，GPU 双卡）
+- Qwen3-Embedding-0.6B（vLLM，CPU）
+- Qwen3-Reranker-0.6B（vLLM，CPU）
+- PaddleOCR（CPU，仅整套 compose）
+
+请参考专用 Step by Step 文档：
+
+- `docs/ubuntu22.04-l20-vllm-step-by-step.md`
+
+对应编排文件（最新）：
+
+- `docker-compose.remote.l20.qwen25.vllm.yml`（整套，含 OCR）
+- `docker-compose.model-suite.l20.qwen25.vllm.yml`（模型套件，不含 OCR）
+- `docker-compose.remote.l20.qwen35.vllm.yml`（整套，含 OCR）
+- `docker-compose.model-suite.l20.qwen35.vllm.yml`（模型套件，不含 OCR）
+
+说明：以上四个编排均包含 `litellm-gateway`（LiteLLM，端口 `8010`），用于在业务与 vLLM 之间做 Token 感知限流（RPM/TPM）。
+并发与限流默认值已按双 L20 场景预设（Qwen2.5 更保守，Qwen3.5 更高吞吐）。
+
+另外，系统提供轻量累计指标（不保留时序）用于长期调优：
+
+- 指标文件：`saves/metrics/llm_summary.json`
+- 管理员接口：`GET /api/system/llm-metrics/summary`
+- 包含累计 `avg/mean` 字段（如延迟、token/请求）
+- 指标写盘为异步后台 flush，默认每 200 次更新或 30 秒落盘，避免阻塞请求链路
