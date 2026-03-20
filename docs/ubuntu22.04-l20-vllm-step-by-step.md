@@ -109,6 +109,27 @@ docker version
 docker compose version
 ```
 
+### 3.4 配置 Docker 国内镜像加速（强烈建议）
+
+编辑 `/etc/docker/daemon.json`：
+
+```bash
+sudo mkdir -p /etc/docker
+sudo tee /etc/docker/daemon.json >/dev/null <<'EOF'
+{
+  "registry-mirrors": [
+    "https://docker.m.daocloud.io",
+    "https://dockerproxy.cn"
+  ]
+}
+EOF
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+docker info | rg "Registry Mirrors" -n -A 4
+```
+
+> 如你们企业有内网 Harbor/制品库镜像，请优先替换为企业镜像地址。
+
 ---
 
 ## 4. 安装 NVIDIA Container Toolkit（让容器可用 GPU）
@@ -158,32 +179,33 @@ cd Zhiyao-Know
 mkdir -p /opt/yuxi-know/Zhiyao-Know/models/Qwen
 ```
 
-### 6.2 安装 Hugging Face CLI
+### 6.2 安装 ModelScope（方案一，国内推荐）
 
 ```bash
 sudo apt install -y python3-pip
-python3 -m pip install -U "huggingface_hub[cli]"
+python3 -m pip install -U modelscope
 ```
 
 ### 6.3 登录并下载模型（按选择下载）
 
 ```bash
-huggingface-cli login
+# 如需登录（私有模型或更高配额）
+# modelscope login --token <your_modelscope_token>
 
 # Qwen2.5（AWQ）方案
-huggingface-cli download Qwen/Qwen2.5-72B-Instruct-AWQ \
-  --local-dir /opt/yuxi-know/Zhiyao-Know/models/Qwen/Qwen2.5-72B-Instruct-AWQ
+modelscope download --model "Qwen/Qwen2.5-72B-Instruct-AWQ" \
+  --local_dir /opt/yuxi-know/Zhiyao-Know/models/Qwen/Qwen2.5-72B-Instruct-AWQ
 
 # Qwen3.5（FP8）方案（若使用 qwen35 compose，请下载）
-huggingface-cli download Qwen/Qwen3.5-35B-A3B-FP8 \
-  --local-dir /opt/yuxi-know/Zhiyao-Know/models/Qwen/Qwen3.5-35B-A3B-FP8
+modelscope download --model "Qwen/Qwen3.5-35B-A3B-FP8" \
+  --local_dir /opt/yuxi-know/Zhiyao-Know/models/Qwen/Qwen3.5-35B-A3B-FP8
 
 # 公共 embedding/rerank
-huggingface-cli download Qwen/Qwen3-Embedding-0.6B \
-  --local-dir /opt/yuxi-know/Zhiyao-Know/models/Qwen/Qwen3-Embedding-0.6B
+modelscope download --model "Qwen/Qwen3-Embedding-0.6B" \
+  --local_dir /opt/yuxi-know/Zhiyao-Know/models/Qwen/Qwen3-Embedding-0.6B
 
-huggingface-cli download Qwen/Qwen3-Reranker-0.6B \
-  --local-dir /opt/yuxi-know/Zhiyao-Know/models/Qwen/Qwen3-Reranker-0.6B
+modelscope download --model "Qwen/Qwen3-Reranker-0.6B" \
+  --local_dir /opt/yuxi-know/Zhiyao-Know/models/Qwen/Qwen3-Reranker-0.6B
 ```
 
 ---
@@ -211,6 +233,15 @@ HOST_IP=<你的服务器IP>
 # 建议修改默认密码
 NEO4J_PASSWORD=<strong_password>
 POSTGRES_PASSWORD=<strong_password>
+
+# Docker 镜像源（如需覆盖）
+VLLM_OPENAI_IMAGE=docker.m.daocloud.io/vllm/vllm-openai:latest
+VLLM_OPENAI_CPU_IMAGE=docker.m.daocloud.io/vllm/vllm-openai-cpu:latest
+
+# LiteLLM 本地构建参数（国内 PyPI 源）
+PYTHON_BASE_IMAGE=docker.m.daocloud.io/python:3.11-slim
+PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn
 ```
 
 ---

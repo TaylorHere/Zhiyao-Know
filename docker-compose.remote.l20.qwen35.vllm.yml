@@ -54,7 +54,14 @@ services:
       service: postgres
 
   litellm-gateway:
-    image: docker.litellm.ai/berriai/litellm:main-stable
+    build:
+      context: .
+      dockerfile: docker/litellm.Dockerfile
+      args:
+        PYTHON_BASE_IMAGE: ${PYTHON_BASE_IMAGE:-docker.m.daocloud.io/python:3.11-slim}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-pypi.tuna.tsinghua.edu.cn}
+    image: ${LITELLM_IMAGE:-litellm-proxy:cn}
     container_name: litellm-gateway
     command:
       - --config
@@ -80,7 +87,7 @@ services:
     restart: unless-stopped
 
   vllm-qwen35-35b-a3b-fp8:
-    image: vllm/vllm-openai:latest
+    image: ${VLLM_OPENAI_IMAGE:-docker.m.daocloud.io/vllm/vllm-openai:latest}
     container_name: vllm-qwen35-35b-a3b-fp8
     command:
       - --model
@@ -131,7 +138,7 @@ services:
     restart: unless-stopped
 
   vllm-qwen3-embedding-cpu:
-    image: vllm/vllm-openai-cpu:latest
+    image: ${VLLM_OPENAI_CPU_IMAGE:-docker.m.daocloud.io/vllm/vllm-openai-cpu:latest}
     container_name: vllm-qwen3-embedding-cpu
     command:
       - --model
@@ -165,7 +172,7 @@ services:
     restart: unless-stopped
 
   vllm-qwen3-rerank-cpu:
-    image: vllm/vllm-openai-cpu:latest
+    image: ${VLLM_OPENAI_CPU_IMAGE:-docker.m.daocloud.io/vllm/vllm-openai-cpu:latest}
     container_name: vllm-qwen3-rerank-cpu
     command:
       - --model

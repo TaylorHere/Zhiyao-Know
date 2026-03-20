@@ -39,6 +39,31 @@ cp .env.template .env.prod
 - `VLLM_RERANK_BASE_URL`（默认：`http://host.docker.internal:8002/v1/rerank`）
 - `VLLM_RERANK_MODEL`（默认：`qwen3-rerank`）
 
+### 1.1 中国大陆镜像源建议
+
+模型下载建议优先使用 **ModelScope（方案一）**；Docker 镜像建议配置国内镜像加速：
+
+```bash
+sudo mkdir -p /etc/docker
+sudo tee /etc/docker/daemon.json >/dev/null <<'EOF'
+{
+  "registry-mirrors": [
+    "https://docker.m.daocloud.io",
+    "https://dockerproxy.cn"
+  ]
+}
+EOF
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+```
+
+在 qwen25/qwen35 的 compose 中，还可通过环境变量覆盖镜像来源：
+
+- `VLLM_OPENAI_IMAGE`
+- `VLLM_OPENAI_CPU_IMAGE`
+- `PYTHON_BASE_IMAGE`（LiteLLM 构建基础镜像）
+- `PIP_INDEX_URL` / `PIP_TRUSTED_HOST`（LiteLLM 构建时 Python 包源）
+
 ### 2. 启动服务
 
 使用 `docker-compose.prod.yml` 文件启动生产环境：
