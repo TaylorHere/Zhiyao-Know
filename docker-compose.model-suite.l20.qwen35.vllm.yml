@@ -47,7 +47,7 @@ services:
       retries: 20
       start_period: 300s
     networks:
-      - model-network
+      - app-network
     restart: unless-stopped
 
   vllm-qwen3-embedding-cpu:
@@ -81,7 +81,7 @@ services:
       retries: 20
       start_period: 120s
     networks:
-      - model-network
+      - app-network
     restart: unless-stopped
 
   vllm-qwen3-rerank-cpu:
@@ -115,7 +115,7 @@ services:
       retries: 20
       start_period: 120s
     networks:
-      - model-network
+      - app-network
     restart: unless-stopped
 
   litellm-gateway:
@@ -148,9 +148,9 @@ services:
       - vllm-qwen3-embedding-cpu
       - vllm-qwen3-rerank-cpu
     networks:
-      - model-network
+      - app-network
     restart: unless-stopped
 
 networks:
-  model-network:
+  app-network:
     driver: bridge
