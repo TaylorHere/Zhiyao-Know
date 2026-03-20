@@ -4,7 +4,7 @@ services:
       file: docker-compose.yaml
       service: api
     environment:
-      - VLLM_CHAT_BASE_URL=${VLLM_CHAT_BASE_URL:-http://litellm-gateway:8010/v1}
+      - VLLM_CHAT_BASE_URL=${VLLM_CHAT_BASE_URL:-http://litellm-gateway:8010/queue}
       - VLLM_EMBED_BASE_URL=${VLLM_EMBED_BASE_URL:-http://litellm-gateway:8010/v1/embeddings}
       - VLLM_RERANK_BASE_URL=${VLLM_RERANK_BASE_URL:-http://litellm-gateway:8010/v1/rerank}
 
