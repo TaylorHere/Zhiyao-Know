@@ -1,13 +1,22 @@
 # Ubuntu 22.04 LTS（裸机）双 L20 + vLLM 部署指引（Step by Step）
 
-本文档用于从 **Ubuntu 22.04 LTS Live** 全新系统开始，部署本项目并拉起以下服务：
+本文档用于从 **Ubuntu 22.04 LTS Live** 全新系统开始，部署本项目。
 
-- `Qwen2.5-72B-Instruct-AWQ`：vLLM，GPU（双卡 L20）
-- `Qwen3-Embedding-0.6B`：vLLM，CPU
-- `Qwen3-Reranker-0.6B`：vLLM，CPU
-- `PaddleOCR (PP-StructureV3)`：CPU
+当前支持两套 LLM 版本（其余组件一致）：
 
-对应编排文件：`docker-compose.remote.l20.qwen25.vllm.yml`
+- `Qwen2.5-72B-Instruct-AWQ`
+- `Qwen3.5-35B-A3B-FP8`
+
+---
+
+## 0.1 编排文件选择（最新）
+
+| 场景 | 编排文件 | 是否包含 OCR |
+|---|---|---|
+| Qwen2.5 整套拉起 | `docker-compose.remote.l20.qwen25.vllm.yml` | 是（`paddlex`） |
+| Qwen2.5 仅模型套件 | `docker-compose.model-suite.l20.qwen25.vllm.yml` | 否 |
+| Qwen3.5 整套拉起 | `docker-compose.remote.l20.qwen35.vllm.yml` | 是（`paddlex`） |
+| Qwen3.5 仅模型套件 | `docker-compose.model-suite.l20.qwen35.vllm.yml` | 否 |
 
 ---
 
@@ -154,14 +163,20 @@ sudo apt install -y python3-pip
 python3 -m pip install -U "huggingface_hub[cli]"
 ```
 
-### 6.3 登录并下载模型
+### 6.3 登录并下载模型（按选择下载）
 
 ```bash
 huggingface-cli login
 
+# Qwen2.5（AWQ）方案
 huggingface-cli download Qwen/Qwen2.5-72B-Instruct-AWQ \
   --local-dir /opt/yuxi-know/Zhiyao-Know/models/Qwen/Qwen2.5-72B-Instruct-AWQ
 
+# Qwen3.5（FP8）方案（若使用 qwen35 compose，请下载）
+huggingface-cli download Qwen/Qwen3.5-35B-A3B-FP8 \
+  --local-dir /opt/yuxi-know/Zhiyao-Know/models/Qwen/Qwen3.5-35B-A3B-FP8
+
+# 公共 embedding/rerank
 huggingface-cli download Qwen/Qwen3-Embedding-0.6B \
   --local-dir /opt/yuxi-know/Zhiyao-Know/models/Qwen/Qwen3-Embedding-0.6B
 
@@ -202,25 +217,33 @@ POSTGRES_PASSWORD=<strong_password>
 
 ```bash
 cd /opt/yuxi-know/Zhiyao-Know
-docker compose -f docker-compose.remote.l20.qwen25.vllm.yml up -d
+FILE=docker-compose.remote.l20.qwen25.vllm.yml
+# 可替换为：
+# docker-compose.model-suite.l20.qwen25.vllm.yml
+# docker-compose.remote.l20.qwen35.vllm.yml
+# docker-compose.model-suite.l20.qwen35.vllm.yml
+
+docker compose -f "$FILE" up -d
 ```
 
 查看状态：
 
 ```bash
-docker compose -f docker-compose.remote.l20.qwen25.vllm.yml ps
+docker compose -f "$FILE" ps
 ```
 
 ---
 
 ## 9. 健康检查与验收
 
-### 9.1 核心业务服务
+### 9.1 核心业务服务（仅整套 compose）
 
 ```bash
 curl -sS http://127.0.0.1/api/system/health
 curl -sS http://127.0.0.1/crawler-api/v1/health
 ```
+
+> 如果使用的是 `model-suite` 文件，这两项不会存在，属于正常情况。
 
 ### 9.2 vLLM 服务
 
@@ -230,17 +253,23 @@ curl -sS http://127.0.0.1:8001/health
 curl -sS http://127.0.0.1:8002/health
 ```
 
-### 9.3 PaddleOCR 服务
+### 9.3 PaddleOCR 服务（仅整套 compose）
 
 ```bash
 curl -sS http://127.0.0.1:8080/health
 ```
 
-### 9.4 检查 GPU 占用（72B-AWQ 是否在跑）
+> 如果使用的是 `model-suite` 文件，默认不包含 OCR 服务。
+
+### 9.4 检查 GPU 占用（LLM 是否在跑）
 
 ```bash
 nvidia-smi
+# Qwen2.5
 docker logs -f vllm-qwen25-72b-awq
+
+# Qwen3.5
+docker logs -f vllm-qwen35-35b-a3b-fp8
 ```
 
 ---
@@ -250,13 +279,13 @@ docker logs -f vllm-qwen25-72b-awq
 当前项目默认内置了常见云模型配置。若你希望系统默认优先走本地 vLLM 聊天模型，建议在系统设置中新增一个自定义供应商：
 
 - Provider ID：`vllm-l20`
-- base_url：`http://vllm-qwen25-72b-awq:8000/v1`
+- base_url：`http://vllm-qwen25-72b-awq:8000/v1`（若使用 qwen35，可改为 `http://vllm-qwen35-35b-a3b-fp8:8000/v1`）
 - env：`NO_API_KEY`
 - models：`["Qwen2.5-72B-Instruct-AWQ"]`
 
 然后将默认模型设置为：
 
-`vllm-l20/Qwen2.5-72B-Instruct-AWQ`
+`vllm-l20/Qwen2.5-72B-Instruct-AWQ`（若使用 qwen35，可改为 `vllm-l20/Qwen3.5-35B-A3B-FP8`）
 
 > 说明：embedding/rerank 的模型选择可按你们业务策略进一步在系统配置中统一固定。
 
@@ -286,6 +315,7 @@ docker logs -f vllm-qwen25-72b-awq
 - 确认 `.env` 中 `MODEL_DIR` 为绝对路径
 - 确认目录下包含：
   - `Qwen/Qwen2.5-72B-Instruct-AWQ`
+  - `Qwen/Qwen3.5-35B-A3B-FP8`（如果使用 qwen35）
   - `Qwen/Qwen3-Embedding-0.6B`
   - `Qwen/Qwen3-Reranker-0.6B`
 
@@ -295,15 +325,16 @@ docker logs -f vllm-qwen25-72b-awq
 
 ```bash
 # 查看所有服务日志
-docker compose -f docker-compose.remote.l20.qwen25.vllm.yml logs -f
+docker compose -f "$FILE" logs -f
 
-# 仅看 vLLM 72B 服务日志
-docker compose -f docker-compose.remote.l20.qwen25.vllm.yml logs -f vllm-qwen25-72b-awq
+# 仅看 vLLM 服务日志（按实际模型）
+docker compose -f "$FILE" logs -f vllm-qwen25-72b-awq
+docker compose -f "$FILE" logs -f vllm-qwen35-35b-a3b-fp8
 
 # 重启
-docker compose -f docker-compose.remote.l20.qwen25.vllm.yml restart
+docker compose -f "$FILE" restart
 
 # 停止
-docker compose -f docker-compose.remote.l20.qwen25.vllm.yml down
+docker compose -f "$FILE" down
 ```
 

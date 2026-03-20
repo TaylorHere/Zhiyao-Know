@@ -105,10 +105,18 @@ bash scripts/offline_bundle.sh import \
 如果是从 Ubuntu 22.04 LTS 裸机开始，并需要按如下方式部署：
 
 - Qwen2.5-72B-Instruct-AWQ（vLLM，GPU 双卡）
+- 或 Qwen3.5-35B-A3B-FP8（vLLM，GPU 双卡）
 - Qwen3-Embedding-0.6B（vLLM，CPU）
 - Qwen3-Reranker-0.6B（vLLM，CPU）
-- PaddleOCR（CPU）
+- PaddleOCR（CPU，仅整套 compose）
 
 请参考专用 Step by Step 文档：
 
 - `docs/ubuntu22.04-l20-vllm-step-by-step.md`
+
+对应编排文件（最新）：
+
+- `docker-compose.remote.l20.qwen25.vllm.yml`（整套，含 OCR）
+- `docker-compose.model-suite.l20.qwen25.vllm.yml`（模型套件，不含 OCR）
+- `docker-compose.remote.l20.qwen35.vllm.yml`（整套，含 OCR）
+- `docker-compose.model-suite.l20.qwen35.vllm.yml`（模型套件，不含 OCR）
