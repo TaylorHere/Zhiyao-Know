@@ -31,3 +31,5 @@ router_settings:
 litellm_settings:
   set_verbose: false
   drop_params: true
+  callbacks:
+    - prometheus

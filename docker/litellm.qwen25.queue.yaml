@@ -36,3 +36,5 @@ litellm_settings:
   set_verbose: false
   drop_params: true
   request_timeout: 600
+  callbacks:
+    - prometheus

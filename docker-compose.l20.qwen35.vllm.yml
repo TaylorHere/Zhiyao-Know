@@ -53,6 +53,14 @@ services:
       file: docker-compose.yaml
       service: postgres
 
+  prometheus:
+    extends:
+      file: docker-compose.yaml
+      service: prometheus
+    volumes:
+      - ./docker/prometheus/prometheus.l20.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/volumes/prometheus:/prometheus
+
   litellm-gateway:
     build:
       context: .

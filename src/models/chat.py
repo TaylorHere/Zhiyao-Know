@@ -1,12 +1,10 @@
 import os
 import traceback
-from time import perf_counter
 
 from openai import AsyncOpenAI
 from tenacity import before_sleep_log, retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from src import config
-from src.metrics import llm_metrics
 from src.utils import logger
 
 
@@ -47,36 +45,14 @@ class OpenAIBase:
         else:
             messages = message
 
-        start = perf_counter()
         try:
             if stream:
                 response = self._stream_response(messages)
-                response = self._stream_with_metrics(response, start)
             else:
                 raw_response = await self._get_response(messages)
-                usage = self._extract_usage(raw_response)
                 response = raw_response.choices[0].message
-                llm_metrics.record(
-                    kind="chat",
-                    model_id=self.model_identifier,
-                    latency_ms=(perf_counter() - start) * 1000,
-                    success=True,
-                    status_code=200,
-                    prompt_tokens=usage.get("prompt_tokens", 0),
-                    completion_tokens=usage.get("completion_tokens", 0),
-                    total_tokens=usage.get("total_tokens", 0),
-                )
 
         except Exception as e:
-            status_code = getattr(e, "status_code", None)
-            llm_metrics.record(
-                kind="chat",
-                model_id=self.model_identifier,
-                latency_ms=(perf_counter() - start) * 1000,
-                success=False,
-                status_code=status_code if isinstance(status_code, int) else None,
-                error_text=str(e),
-            )
             err = (
                 f"Error streaming response: {e}, URL: {self.base_url}, "
                 f"API Key: {self.api_key[:5]}***, Model: {self.model_name}"
@@ -85,32 +61,6 @@ class OpenAIBase:
             raise Exception(err)
 
         return response
-
-    async def _stream_with_metrics(self, agen, start_time):
-        success = False
-        err_text = ""
-        status_code = 200
-        try:
-            async for chunk in agen:
-                yield chunk
-            success = True
-        except Exception as e:  # noqa: BLE001
-            err_text = str(e)
-            sc = getattr(e, "status_code", None)
-            if isinstance(sc, int):
-                status_code = sc
-            else:
-                status_code = None
-            raise
-        finally:
-            llm_metrics.record(
-                kind="chat",
-                model_id=self.model_identifier,
-                latency_ms=(perf_counter() - start_time) * 1000,
-                success=success,
-                status_code=status_code,
-                error_text=err_text,
-            )
 
     async def _stream_response(self, messages):
         response = await self.client.chat.completions.create(
@@ -129,17 +79,6 @@ class OpenAIBase:
             stream=False,
         )
         return response
-
-    @staticmethod
-    def _extract_usage(response):
-        usage = getattr(response, "usage", None)
-        if usage is None:
-            return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-        return {
-            "prompt_tokens": int(getattr(usage, "prompt_tokens", 0) or 0),
-            "completion_tokens": int(getattr(usage, "completion_tokens", 0) or 0),
-            "total_tokens": int(getattr(usage, "total_tokens", 0) or 0),
-        }
 
     async def get_models(self):
         try:

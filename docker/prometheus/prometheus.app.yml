@@ -1,0 +1,30 @@
+global:
+  scrape_interval: 30s
+  scrape_timeout: 10s
+  evaluation_interval: 30s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["prometheus:9090"]
+    sample_limit: 1500
+
+  - job_name: api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api:5050"]
+    sample_limit: 4000
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: ".*_bucket"
+        action: drop
+
+  - job_name: crawler
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["crawler:5060"]
+    sample_limit: 4000
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: ".*_bucket"
+        action: drop

@@ -106,6 +106,26 @@ services:
       - app-network
     restart: unless-stopped
 
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=24h
+      - --storage.tsdb.retention.size=512MB
+      - --storage.tsdb.wal-compression
+      - --query.max-concurrency=4
+      - --query.max-samples=200000
+    volumes:
+      - ./docker/prometheus/prometheus.app.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/volumes/prometheus:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - app-network
+    restart: unless-stopped
+
   web:
     image: registry.cn-beijing.aliyuncs.com/wyhy/mirrors:yuxi-web-0.5.dev
     container_name: web-dev
@@ -114,6 +134,7 @@ services:
     depends_on:
       - api
       - crawler
+      - prometheus
     networks:
       - app-network
     restart: unless-stopped

@@ -2,14 +2,12 @@ import asyncio
 import os
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Sequence
-from time import perf_counter
 from typing import Any
 
 import aiohttp
 import numpy as np
 
 from src import config
-from src.metrics import llm_metrics
 from src.utils import get_docker_safe_url, logger
 
 
@@ -82,7 +80,6 @@ class BaseReranker(ABC):
             return []
 
         payload = self._build_payload(query, docs, max_length)
-        start = perf_counter()
 
         await self._ensure_session()
         assert self.session is not None
@@ -91,43 +88,12 @@ class BaseReranker(ABC):
             async with self.session.post(self.url, json=payload) as response:
                 response.raise_for_status()
                 result: dict[str, Any] = await response.json()
-                llm_metrics.record(
-                    kind="rerank",
-                    model_id=self.model,
-                    latency_ms=(perf_counter() - start) * 1000,
-                    success=True,
-                    status_code=response.status,
-                    rerank_docs=len(docs),
-                )
         except TimeoutError as exc:
             total_timeout = self.timeout.total if self.timeout else 0.0
             logger.error(f"Reranking request timeout after {total_timeout:.1f}s")
-            llm_metrics.record(
-                kind="rerank",
-                model_id=self.model,
-                latency_ms=(perf_counter() - start) * 1000,
-                success=False,
-                status_code=None,
-                rerank_docs=len(docs),
-                error_text=str(exc),
-            )
             raise exc
         except aiohttp.ClientError as exc:
             logger.error(f"Reranking request failed: {exc}")
-            status_code = None
-            if hasattr(exc, "status"):
-                maybe = getattr(exc, "status")
-                if isinstance(maybe, int):
-                    status_code = maybe
-            llm_metrics.record(
-                kind="rerank",
-                model_id=self.model,
-                latency_ms=(perf_counter() - start) * 1000,
-                success=False,
-                status_code=status_code,
-                rerank_docs=len(docs),
-                error_text=str(exc),
-            )
             raise exc
 
         processed = sorted(self._extract_results(result), key=lambda item: item.get("index", 0))
