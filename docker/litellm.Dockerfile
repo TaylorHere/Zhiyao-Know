@@ -11,7 +11,7 @@ ENV PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST}
 ENV PIP_NO_CACHE_DIR=1
 
 RUN python -m pip install -U pip && \
-    pip install "litellm[proxy]"
+    pip install "litellm[proxy]" tiktoken
 
 EXPOSE 8010
 
