@@ -66,6 +66,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --index-url https://mirrors.aliyun.com/pypi/simple \
     --extra-index-url https://download.pytorch.org/whl/cpu
 
+RUN python -m pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple tiktoken
+
 RUN rm -rf /tmp/wheels
 
 # 激活虚拟环境并添加到PATH
