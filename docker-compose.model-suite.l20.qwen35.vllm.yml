@@ -114,22 +114,20 @@ services:
       - model-network
     restart: unless-stopped
 
-  vllm-gateway:
-    image: nginx:1.27-alpine
-    container_name: vllm-gateway
-    environment:
-      - VLLM_CHAT_UPSTREAM=vllm-qwen35-35b-a3b-fp8:8000
-      - VLLM_EMBED_UPSTREAM=vllm-qwen3-embedding-cpu:8001
-      - VLLM_RERANK_UPSTREAM=vllm-qwen3-rerank-cpu:8002
-      - VLLM_RATE_LIMIT=${VLLM_RATE_LIMIT:-10r/s}
-      - VLLM_BURST=${VLLM_BURST:-20}
-      - VLLM_MAX_CONN=${VLLM_MAX_CONN:-8}
+  litellm-gateway:
+    image: docker.litellm.ai/berriai/litellm:main-stable
+    container_name: litellm-gateway
+    command:
+      - --config
+      - /app/config.yaml
+      - --port
+      - "8010"
     volumes:
-      - ./docker/vllm-gateway.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./docker/litellm.qwen35.yaml:/app/config.yaml:ro
     ports:
       - "8010:8010"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://localhost:8010/healthz || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8010/health/readiness || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 10

@@ -1,0 +1,33 @@
+model_list:
+  - model_name: Qwen2.5-72B-Instruct-AWQ
+    litellm_params:
+      model: openai/Qwen2.5-72B-Instruct-AWQ
+      api_base: http://vllm-qwen25-72b-awq:8000/v1
+      api_key: no_api_key
+      rpm: 60
+      tpm: 120000
+
+  - model_name: Qwen3-Embedding-0.6B
+    litellm_params:
+      model: openai/Qwen3-Embedding-0.6B
+      api_base: http://vllm-qwen3-embedding-cpu:8001/v1
+      api_key: no_api_key
+      rpm: 120
+      tpm: 240000
+
+  - model_name: qwen3-rerank
+    litellm_params:
+      model: openai/qwen3-rerank
+      api_base: http://vllm-qwen3-rerank-cpu:8002/v1
+      api_key: no_api_key
+      rpm: 120
+      tpm: 120000
+
+router_settings:
+  routing_strategy: simple-shuffle
+  optional_pre_call_checks:
+    - enforce_model_rate_limits
+
+litellm_settings:
+  set_verbose: false
+  drop_params: true
