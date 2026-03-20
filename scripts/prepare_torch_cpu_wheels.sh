@@ -11,7 +11,7 @@ docker run --rm \
   python:3.12-slim \
   bash -lc "python -m pip install -U pip && \
     pip download --dest /wheels \
-    --index-url https://mirrors.aliyun.com/pypi/simple \
+    --index-url https://pypi.tuna.tsinghua.edu.cn/simple \
     --extra-index-url https://download.pytorch.org/whl/cpu \
     --timeout 120 \
     --retries 10 \

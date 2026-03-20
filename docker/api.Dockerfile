@@ -49,8 +49,8 @@ COPY ../.python-version /app/.python-version
 COPY ../uv.lock /app/uv.lock
 COPY ../.wheels /tmp/wheels
 
-# uv.lock 历史上由清华源生成，这里统一替换为阿里源，避免构建时 TLS EOF
-RUN sed -i 's|https://pypi.tuna.tsinghua.edu.cn|https://mirrors.aliyun.com/pypi|g' /app/uv.lock
+# 统一使用清华源
+RUN sed -i 's|https://mirrors.aliyun.com/pypi|https://pypi.tuna.tsinghua.edu.cn|g' /app/uv.lock
 
 # 方法一：优先使用仓库内预下载的 CPU wheel，避免构建时反复拉取 torch 大包
 RUN set -ex \
@@ -63,13 +63,14 @@ RUN set -ex \
 # 安装其余依赖；torch/torchvision 若已离线安装，这里会复用已安装版本
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --no-dev --frozen \
-    --index-url https://mirrors.aliyun.com/pypi/simple \
+    --index-url https://pypi.tuna.tsinghua.edu.cn/simple \
     --extra-index-url https://download.pytorch.org/whl/cpu
 
 RUN rm -rf /tmp/wheels
 
 # 激活虚拟环境并添加到PATH
 ENV PATH="/app/.venv/bin:$PATH"
+RUN echo 'export PATH="/app/.venv/bin:$PATH"' >> /root/.bashrc
 
 # 复制代码到容器中
 COPY ../src /app/src
