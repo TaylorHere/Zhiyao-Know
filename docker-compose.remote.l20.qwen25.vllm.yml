@@ -1,7 +1,7 @@
 services:
   api:
     extends:
-      file: docker-compose.remote.full.yml
+      file: docker-compose.yaml
       service: api
     environment:
       - VLLM_CHAT_BASE_URL=${VLLM_CHAT_BASE_URL:-http://litellm-gateway:8010/v1}
@@ -10,47 +10,47 @@ services:
 
   crawler:
     extends:
-      file: docker-compose.remote.full.yml
+      file: docker-compose.yaml
       service: crawler
 
   crawler-worker:
     extends:
-      file: docker-compose.remote.full.yml
+      file: docker-compose.yaml
       service: crawler-worker
 
   crawler-redis:
     extends:
-      file: docker-compose.remote.full.yml
+      file: docker-compose.yaml
       service: crawler-redis
 
   web:
     extends:
-      file: docker-compose.remote.full.yml
+      file: docker-compose.yaml
       service: web
 
   graph:
     extends:
-      file: docker-compose.remote.full.yml
+      file: docker-compose.yaml
       service: graph
 
   etcd:
     extends:
-      file: docker-compose.remote.full.yml
+      file: docker-compose.yaml
       service: etcd
 
   minio:
     extends:
-      file: docker-compose.remote.full.yml
+      file: docker-compose.yaml
       service: minio
 
   milvus:
     extends:
-      file: docker-compose.remote.full.yml
+      file: docker-compose.yaml
       service: milvus
 
   postgres:
     extends:
-      file: docker-compose.remote.full.yml
+      file: docker-compose.yaml
       service: postgres
 
   litellm-gateway:
