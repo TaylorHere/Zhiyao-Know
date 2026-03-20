@@ -159,7 +159,7 @@ services:
       - --query.max-concurrency=4
       - --query.max-samples=200000
     volumes:
-      - ./docker/prometheus/prometheus.model-suite.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/prometheus/prometheus.model-suite.qwen35.yml:/etc/prometheus/prometheus.yml:ro
       - ./docker/volumes/prometheus:/prometheus
     ports:
       - "9090:9090"

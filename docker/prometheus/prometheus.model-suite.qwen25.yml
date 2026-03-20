@@ -9,61 +9,41 @@ scrape_configs:
       - targets: ["prometheus:9090"]
     sample_limit: 1500
 
-  - job_name: api
+  - job_name: litellm
     metrics_path: /metrics
     static_configs:
-      - targets: ["api:5050"]
-    sample_limit: 4000
-    metric_relabel_configs:
-      - source_labels: [__name__]
-        regex: ".*_bucket"
-        action: drop
-
-  - job_name: postgres
-    metrics_path: /metrics
-    static_configs:
-      - targets: ["postgres-exporter:9187"]
-    sample_limit: 3000
-    metric_relabel_configs:
-      - source_labels: [__name__]
-        regex: ".*_bucket"
-        action: drop
-
-  - job_name: neo4j
-    metrics_path: /metrics
-    static_configs:
-      - targets: ["graph:2004"]
-    sample_limit: 4000
-    metric_relabel_configs:
-      - source_labels: [__name__]
-        regex: ".*_bucket"
-        action: drop
-
-  - job_name: milvus
-    metrics_path: /metrics
-    static_configs:
-      - targets: ["milvus:9091"]
+      - targets: ["litellm-gateway:8010"]
     sample_limit: 5000
     metric_relabel_configs:
       - source_labels: [__name__]
         regex: ".*_bucket"
         action: drop
 
-  - job_name: etcd
+  - job_name: vllm-chat
     metrics_path: /metrics
     static_configs:
-      - targets: ["etcd:2379"]
-    sample_limit: 4000
+      - targets: ["vllm-qwen25-72b-awq:8000"]
+    sample_limit: 6000
     metric_relabel_configs:
       - source_labels: [__name__]
         regex: ".*_bucket"
         action: drop
 
-  - job_name: minio
-    metrics_path: /minio/v2/metrics/cluster
+  - job_name: vllm-embedding
+    metrics_path: /metrics
     static_configs:
-      - targets: ["minio:9000"]
-    sample_limit: 4000
+      - targets: ["vllm-qwen3-embedding-cpu:8001"]
+    sample_limit: 6000
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: ".*_bucket"
+        action: drop
+
+  - job_name: vllm-rerank
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["vllm-qwen3-rerank-cpu:8002"]
+    sample_limit: 6000
     metric_relabel_configs:
       - source_labels: [__name__]
         regex: ".*_bucket"

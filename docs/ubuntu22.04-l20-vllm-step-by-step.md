@@ -557,6 +557,8 @@ docker compose -f "$FILE" down
 - API 指标：`http://127.0.0.1:5050/metrics`
 - Crawler 指标：`http://127.0.0.1:18060/metrics`
 - LiteLLM 指标：`http://127.0.0.1:8010/metrics`
+- vLLM 指标：`http://127.0.0.1:8000/metrics`、`http://127.0.0.1:8001/metrics`、`http://127.0.0.1:8002/metrics`
+- 基础设施指标：Redis、Postgres、Neo4j、Milvus、etcd、MinIO
 
 默认低内存参数：
 

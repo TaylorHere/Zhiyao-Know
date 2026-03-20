@@ -23,6 +23,11 @@ services:
       file: docker-compose.yaml
       service: app-redis
 
+  redis-exporter:
+    extends:
+      file: docker-compose.yaml
+      service: redis-exporter
+
   web:
     extends:
       file: docker-compose.yaml
@@ -53,12 +58,17 @@ services:
       file: docker-compose.yaml
       service: postgres
 
+  postgres-exporter:
+    extends:
+      file: docker-compose.yaml
+      service: postgres-exporter
+
   prometheus:
     extends:
       file: docker-compose.yaml
       service: prometheus
     volumes:
-      - ./docker/prometheus/prometheus.l20.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/prometheus/prometheus.l20.qwen25.yml:/etc/prometheus/prometheus.yml:ro
       - ./docker/volumes/prometheus:/prometheus
 
   litellm-gateway:

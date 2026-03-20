@@ -155,6 +155,8 @@ bash scripts/offline_bundle.sh import \
 - API 指标端点：`http://<host>:5050/metrics`
 - Crawler 指标端点：`http://<host>:18060/metrics`
 - LiteLLM 指标端点（相关编排启用时）：`http://<host>:8010/metrics`
+- vLLM 指标端点（相关编排启用时）：`http://<host>:8000/metrics`、`http://<host>:8001/metrics`、`http://<host>:8002/metrics`
+- 基础设施指标（Exporter/原生端点）：Redis、Postgres、Neo4j、Milvus、etcd、MinIO
 
 为控制 Prometheus 内存占用，默认已配置：
 

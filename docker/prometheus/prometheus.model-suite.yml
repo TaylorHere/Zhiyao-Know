@@ -18,3 +18,33 @@ scrape_configs:
       - source_labels: [__name__]
         regex: ".*_bucket"
         action: drop
+
+  - job_name: vllm-chat
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["vllm-qwen25-72b-awq:8000", "vllm-qwen35-35b-a3b-fp8:8000"]
+    sample_limit: 6000
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: ".*_bucket"
+        action: drop
+
+  - job_name: vllm-embedding
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["vllm-qwen3-embedding-cpu:8001"]
+    sample_limit: 6000
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: ".*_bucket"
+        action: drop
+
+  - job_name: vllm-rerank
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["vllm-qwen3-rerank-cpu:8002"]
+    sample_limit: 6000
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: ".*_bucket"
+        action: drop
