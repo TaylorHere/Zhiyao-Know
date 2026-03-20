@@ -2,11 +2,13 @@ import asyncio
 import json
 import os
 from abc import ABC, abstractmethod
+from time import perf_counter
 
 import httpx
 import requests
 
 from src import config
+from src.metrics import llm_metrics
 from src.utils import get_docker_safe_url, hashstr, logger
 
 
@@ -27,6 +29,27 @@ class BaseEmbeddingModel(ABC):
         self.base_url = get_docker_safe_url(base_url)
         self.api_key = os.getenv(api_key, api_key)
         self.embed_state = {}
+
+    def _record_metrics(
+        self,
+        *,
+        latency_ms: float,
+        success: bool,
+        status_code: int | None = None,
+        input_items: int = 0,
+        total_tokens: int = 0,
+        error_text: str = "",
+    ) -> None:
+        llm_metrics.record(
+            kind="embedding",
+            model_id=self.model,
+            latency_ms=latency_ms,
+            success=success,
+            status_code=status_code,
+            input_items=input_items,
+            total_tokens=total_tokens,
+            error_text=error_text,
+        )
 
     @abstractmethod
     def encode(self, message: list[str] | str) -> list[list[float]]:
@@ -160,20 +183,40 @@ class OtherEmbedding(BaseEmbeddingModel):
         return {"model": self.model, "input": message}
 
     def encode(self, message: list[str] | str) -> list[list[float]]:
+        input_items = len(message) if isinstance(message, list) else 1
         payload = self.build_payload(message)
+        start = perf_counter()
         try:
             response = requests.post(self.base_url, json=payload, headers=self.headers, timeout=60)
             response.raise_for_status()
             result = response.json()
             if not isinstance(result, dict) or "data" not in result:
                 raise ValueError(f"Other Embedding failed: Invalid response format {result}")
+            usage = result.get("usage", {}) if isinstance(result, dict) else {}
+            self._record_metrics(
+                latency_ms=(perf_counter() - start) * 1000,
+                success=True,
+                status_code=response.status_code,
+                input_items=input_items,
+                total_tokens=int(usage.get("total_tokens", 0) or 0),
+            )
             return [item["embedding"] for item in result["data"]]
         except (requests.RequestException, json.JSONDecodeError) as e:
             logger.error(f"Other Embedding request failed: {e}, {payload}")
+            status_code = getattr(getattr(e, "response", None), "status_code", None)
+            self._record_metrics(
+                latency_ms=(perf_counter() - start) * 1000,
+                success=False,
+                status_code=status_code if isinstance(status_code, int) else None,
+                input_items=input_items,
+                error_text=str(e),
+            )
             raise ValueError(f"Other Embedding request failed: {e}")
 
     async def aencode(self, message: list[str] | str) -> list[list[float]]:
+        input_items = len(message) if isinstance(message, list) else 1
         payload = self.build_payload(message)
+        start = perf_counter()
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(self.base_url, json=payload, headers=self.headers, timeout=60)
@@ -181,8 +224,24 @@ class OtherEmbedding(BaseEmbeddingModel):
                 result = response.json()
                 if not isinstance(result, dict) or "data" not in result:
                     raise ValueError(f"Other Embedding failed: Invalid response format {result}")
+                usage = result.get("usage", {}) if isinstance(result, dict) else {}
+                self._record_metrics(
+                    latency_ms=(perf_counter() - start) * 1000,
+                    success=True,
+                    status_code=response.status_code,
+                    input_items=input_items,
+                    total_tokens=int(usage.get("total_tokens", 0) or 0),
+                )
                 return [item["embedding"] for item in result["data"]]
             except (httpx.RequestError, json.JSONDecodeError) as e:
+                status_code = getattr(getattr(e, "response", None), "status_code", None)
+                self._record_metrics(
+                    latency_ms=(perf_counter() - start) * 1000,
+                    success=False,
+                    status_code=status_code if isinstance(status_code, int) else None,
+                    input_items=input_items,
+                    error_text=str(e),
+                )
                 raise ValueError(f"Other Embedding async request failed: {e}, {payload}, {self.base_url=}")
 
 

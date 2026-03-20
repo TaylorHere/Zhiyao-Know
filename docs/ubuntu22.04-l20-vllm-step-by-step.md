@@ -380,3 +380,22 @@ docker compose -f "$FILE" down
   - `--max-num-seqs 12`
   - `--max-num-batched-tokens 24576`
 
+## 15. 轻量长期观测（仅最终汇总，无时序）
+
+系统已内置 LLM 累计汇总指标记录，默认落盘：
+
+- `saves/metrics/llm_summary.json`
+
+支持统计（按模型累计）：
+
+- 总请求数、成功/失败数
+- 429 次数、5xx 次数
+- 延迟总和/最大值/分桶
+- token 累计（可用时）
+
+查看方式（管理员接口）：
+
+```bash
+curl -sS http://127.0.0.1/api/system/llm-metrics/summary
+```
+

@@ -123,3 +123,8 @@ bash scripts/offline_bundle.sh import \
 
 说明：以上四个编排均包含 `litellm-gateway`（LiteLLM，端口 `8010`），用于在业务与 vLLM 之间做 Token 感知限流（RPM/TPM）。
 并发与限流默认值已按双 L20 场景预设（Qwen2.5 更保守，Qwen3.5 更高吞吐）。
+
+另外，系统提供轻量累计指标（不保留时序）用于长期调优：
+
+- 指标文件：`saves/metrics/llm_summary.json`
+- 管理员接口：`GET /api/system/llm-metrics/summary`
