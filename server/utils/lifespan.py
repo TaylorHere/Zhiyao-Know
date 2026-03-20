@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from src.services.task_service import tasker
 from src.services.mcp_service import init_mcp_servers
+from src.services.first_run_seed_service import FirstRunSeedService
 from src.storage.postgres.manager import pg_manager
 from src.knowledge import knowledge_base
 from src.utils import logger
@@ -31,6 +32,12 @@ async def lifespan(app: FastAPI):
         await knowledge_base.initialize()
     except Exception as e:
         logger.error(f"Failed to initialize knowledge base manager: {e}")
+
+    # 启动自检：打印惠州营销隐藏库与智能体绑定状态
+    try:
+        await FirstRunSeedService.log_startup_binding_status()
+    except Exception as e:
+        logger.error(f"Failed to run HuizhouPowerQA startup binding check: {e}")
 
     await tasker.start()
     yield

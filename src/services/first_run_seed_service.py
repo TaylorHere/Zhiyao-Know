@@ -6,13 +6,17 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from sqlalchemy import select, text
+
 from src import config
 from src.knowledge import knowledge_base
 from src.knowledge.base import FileStatus
 from src.knowledge.manager import KB_VISIBILITY_AGENT_ONLY
+from src.repositories.agent_config_repository import AgentConfigRepository
 from src.repositories.knowledge_base_repository import KnowledgeBaseRepository
 from src.services.kb_agent_binding_service import KBAgentBindingService
 from src.storage.postgres.manager import pg_manager
+from src.storage.postgres.models_business import AgentConfig
 from src.utils import logger
 
 
@@ -36,13 +40,58 @@ class FirstRunSeedService:
     DATASET_JSONL = "hz_power_marketing_qa_dataset_20260320.jsonl"
 
     @classmethod
+    async def log_startup_binding_status(cls) -> None:
+        if not pg_manager._initialized:
+            pg_manager.initialize()
+
+        async with pg_manager.get_async_session_context() as session:
+            rows = await session.execute(select(AgentConfig).where(AgentConfig.agent_id == cls.AGENT_ID))
+            configs = list(rows.scalars().all())
+
+            default_cfg = next((cfg for cfg in configs if cfg.is_default), None)
+            default_knowledges = []
+            if default_cfg:
+                default_knowledges = (
+                    ((default_cfg.config_json or {}).get("context") or {}).get("knowledges") or []
+                )
+
+            bind_rows = await session.execute(
+                text("SELECT kb_id FROM kb_agent_bindings WHERE agent_id = :agent_id ORDER BY kb_id"),
+                {"agent_id": cls.AGENT_ID},
+            )
+            bound_kb_ids = [row[0] for row in bind_rows.fetchall()]
+
+            kb_rows = await session.execute(
+                text(
+                    "SELECT db_id, name, visibility FROM knowledge_bases "
+                    "WHERE name = :kb_name OR db_id = ANY(:kb_ids)"
+                ),
+                {"kb_name": cls.KB_NAME, "kb_ids": bound_kb_ids or [""]},
+            )
+            kb_map = {row[0]: {"name": row[1], "visibility": row[2]} for row in kb_rows.fetchall()}
+            hidden_kb_id = next((db_id for db_id, info in kb_map.items() if info["name"] == cls.KB_NAME), None)
+
+            is_default_only_hidden = default_knowledges == [cls.KB_NAME]
+            is_only_hidden_bound = bool(hidden_kb_id) and bound_kb_ids == [hidden_kb_id]
+
+            logger.info(
+                "HuizhouPowerQA startup binding check: "
+                f"agent={cls.AGENT_ID}, hidden_kb={cls.KB_NAME}, hidden_kb_id={hidden_kb_id}, "
+                f"bound_kb_ids={bound_kb_ids}, default_knowledges={default_knowledges}, "
+                f"default_only_hidden={is_default_only_hidden}, only_hidden_bound={is_only_hidden_bound}"
+            )
+
+    @classmethod
     async def seed_hidden_huizhou_kb(cls, operator_id: int | str, department_id: int | None) -> SeedResult:
         if not pg_manager._initialized:
             pg_manager.initialize()
         await knowledge_base.initialize()
 
         kb_id = await cls._ensure_hidden_kb(department_id=department_id)
-        await KBAgentBindingService().bind_agents(kb_id=kb_id, agent_ids=[cls.AGENT_ID], replace=False)
+        await cls._ensure_agent_binding_only_hidden(kb_id=kb_id)
+        await cls._ensure_agent_configs_only_hidden(
+            operator_id=str(operator_id), department_id=department_id, kb_name=cls.KB_NAME
+        )
 
         dataset_path = cls._resolve_dataset_csv_path()
         if dataset_path is None:
@@ -71,6 +120,48 @@ class FirstRunSeedService:
             message=msg,
             dataset_path=str(dataset_path),
         )
+
+    @classmethod
+    async def _ensure_agent_binding_only_hidden(cls, kb_id: str) -> None:
+        await KBAgentBindingService().bind_agents(kb_id=kb_id, agent_ids=[cls.AGENT_ID], replace=False)
+        async with pg_manager.get_async_session_context() as session:
+            await session.execute(
+                text(
+                    """
+                    DELETE FROM kb_agent_bindings
+                    WHERE agent_id = :agent_id AND kb_id != :kb_id
+                    """
+                ),
+                {"agent_id": cls.AGENT_ID, "kb_id": kb_id},
+            )
+
+    @classmethod
+    async def _ensure_agent_configs_only_hidden(cls, operator_id: str, department_id: int | None, kb_name: str) -> None:
+        async with pg_manager.get_async_session_context() as session:
+            repo = AgentConfigRepository(session)
+            if department_id is not None:
+                default_cfg = await repo.get_or_create_default(
+                    department_id=department_id,
+                    agent_id=cls.AGENT_ID,
+                    created_by=operator_id,
+                )
+                cfg_json = dict(default_cfg.config_json or {})
+                ctx = dict(cfg_json.get("context") or {})
+                ctx["knowledges"] = [kb_name]
+                cfg_json["context"] = ctx
+                await repo.update(default_cfg, config_json=cfg_json, updated_by=operator_id)
+                await repo.set_default(config=default_cfg, updated_by=operator_id)
+
+            rows = await session.execute(select(AgentConfig).where(AgentConfig.agent_id == cls.AGENT_ID))
+            configs = list(rows.scalars().all())
+            for cfg in configs:
+                cfg_json = dict(cfg.config_json or {})
+                ctx = dict(cfg_json.get("context") or {})
+                if ctx.get("knowledges") == [kb_name]:
+                    continue
+                ctx["knowledges"] = [kb_name]
+                cfg_json["context"] = ctx
+                await repo.update(cfg, config_json=cfg_json, updated_by=operator_id)
 
     @classmethod
     async def _ensure_hidden_kb(cls, department_id: int | None) -> str:
