@@ -12,8 +12,8 @@ FROM docker.m.daocloud.io/vllm/vllm-openai:v0.10.1.1
 # FROM vllm/vllm-openai:v0.10.2
 
 # Install libgl for opencv support & Noto fonts for Chinese characters
-RUN sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list && \
-    sed -i 's|http://security.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list && \
+RUN sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list && \
+    sed -i 's|http://security.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list && \
     apt-get update && \
     apt-get install -y \
         fonts-noto-core \
@@ -25,7 +25,7 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.
     rm -rf /var/lib/apt/lists/*
 
 # Install mineru latest
-RUN python3 -m pip install -U 'mineru[core]' -i https://pypi.tuna.tsinghua.edu.cn/simple --break-system-packages && \
+RUN python3 -m pip install -U 'mineru[core]' -i https://mirrors.aliyun.com/pypi/simple --break-system-packages && \
     python3 -m pip cache purge
 
 # Download models and update the configuration file
