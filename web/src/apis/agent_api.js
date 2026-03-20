@@ -10,17 +10,6 @@ import {
 } from './base'
 import { useUserStore } from '@/stores/user'
 
-const parseStreamError = async (response) => {
-  let errorMessage = `请求失败: ${response.status} ${response.statusText}`
-  try {
-    const data = await response.json()
-    errorMessage = data?.detail || data?.message || data?.error?.message || errorMessage
-  } catch (e) {
-    // ignore json parse errors and fallback to status text
-  }
-  return new Error(errorMessage)
-}
-
 /**
  * 智能体API模块
  * 包含智能体管理、聊天、配置等功能
@@ -54,14 +43,6 @@ export const agentApi = {
         ...(extraHeaders || {})
       },
       ...restOptions
-    }).then(async (response) => {
-      if (!response.ok) {
-        throw await parseStreamError(response)
-      }
-      if (!response.body) {
-        throw new Error('后端未返回流式响应体')
-      }
-      return response
     })
   },
 
@@ -217,14 +198,6 @@ export const agentApi = {
         ...(extraHeaders || {})
       },
       ...restOptions
-    }).then(async (response) => {
-      if (!response.ok) {
-        throw await parseStreamError(response)
-      }
-      if (!response.body) {
-        throw new Error('后端未返回流式响应体')
-      }
-      return response
     })
   }
 }

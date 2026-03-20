@@ -944,8 +944,13 @@ const handleSend = async () => {
       signal: threadStateForSend.streamAbortController?.signal
     })
 
-    // 聊天链路要求全程流式，非流式响应视为异常
-    await handleAgentResponse(response, threadId)
+    // 处理流式响应
+    if (response && response.body) {
+      await handleAgentResponse(response, threadId)
+    } else {
+      // 非流式响应，直接刷新消息
+      await fetchThreadMessages(threadId)
+    }
   } catch (error) {
     if (error.name !== 'AbortError') {
       // 如果发送失败，恢复附件列表
