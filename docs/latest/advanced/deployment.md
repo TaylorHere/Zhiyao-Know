@@ -90,3 +90,16 @@ bash scripts/offline_bundle.sh import \
 详细步骤和交付清单见：
 
 - `docs/离线交付部署说明.md`
+
+## Ubuntu 22.04 + 双 L20 + vLLM 专用部署
+
+如果是从 Ubuntu 22.04 LTS 裸机开始，并需要按如下方式部署：
+
+- Qwen2.5-72B-Instruct-AWQ（vLLM，GPU 双卡）
+- Qwen3-Embedding-0.6B（vLLM，CPU）
+- Qwen3-Reranker-0.6B（vLLM，CPU）
+- PaddleOCR（CPU）
+
+请参考专用 Step by Step 文档：
+
+- `docs/ubuntu22.04-l20-vllm-step-by-step.md`
