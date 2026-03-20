@@ -18,6 +18,8 @@
 | Qwen3.5 整套拉起 | `docker-compose.remote.l20.qwen35.vllm.yml` | 是（`paddlex`） |
 | Qwen3.5 仅模型套件 | `docker-compose.model-suite.l20.qwen35.vllm.yml` | 否 |
 
+以上四个文件均内置 `vllm-gateway` 限流组件（Nginx），作为业务与模型服务之间的网关，默认端口 `8010`。
+
 ---
 
 ## 0. 目标机器建议规格
@@ -248,6 +250,10 @@ curl -sS http://127.0.0.1/crawler-api/v1/health
 ### 9.2 vLLM 服务
 
 ```bash
+# 限流网关（业务侧建议使用）
+curl -sS http://127.0.0.1:8010/healthz
+
+# 直连后端模型服务（运维排障用）
 curl -sS http://127.0.0.1:8000/health
 curl -sS http://127.0.0.1:8001/health
 curl -sS http://127.0.0.1:8002/health
@@ -330,6 +336,7 @@ docker compose -f "$FILE" logs -f
 # 仅看 vLLM 服务日志（按实际模型）
 docker compose -f "$FILE" logs -f vllm-qwen25-72b-awq
 docker compose -f "$FILE" logs -f vllm-qwen35-35b-a3b-fp8
+docker compose -f "$FILE" logs -f vllm-gateway
 
 # 重启
 docker compose -f "$FILE" restart
@@ -337,4 +344,17 @@ docker compose -f "$FILE" restart
 # 停止
 docker compose -f "$FILE" down
 ```
+
+## 13. 限流参数调优（vllm-gateway）
+
+网关默认参数（在 compose 中可覆盖）：
+
+- `VLLM_RATE_LIMIT=10r/s`
+- `VLLM_BURST=20`
+- `VLLM_MAX_CONN=8`
+
+如果并发较高且出现 LLM OOM，可先适当降低：
+
+- `VLLM_RATE_LIMIT`（例如降到 `5r/s`）
+- `VLLM_MAX_CONN`（例如降到 `4`）
 

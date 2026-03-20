@@ -120,3 +120,5 @@ bash scripts/offline_bundle.sh import \
 - `docker-compose.model-suite.l20.qwen25.vllm.yml`（模型套件，不含 OCR）
 - `docker-compose.remote.l20.qwen35.vllm.yml`（整套，含 OCR）
 - `docker-compose.model-suite.l20.qwen35.vllm.yml`（模型套件，不含 OCR）
+
+说明：以上四个编排均包含 `vllm-gateway` 限流组件（端口 `8010`），用于在业务与 vLLM 之间做请求限流与并发连接控制。

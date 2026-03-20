@@ -1,0 +1,56 @@
+limit_req_zone $server_name zone=llm_rps:10m rate=${VLLM_RATE_LIMIT};
+limit_conn_zone $server_name zone=llm_conn:10m;
+
+server {
+    listen 8010;
+    server_name _;
+
+    client_max_body_size 10m;
+
+    location = /healthz {
+        access_log off;
+        return 200 "ok\n";
+    }
+
+    location = /v1/embeddings {
+        limit_req zone=llm_rps burst=${VLLM_BURST} nodelay;
+        limit_conn llm_conn ${VLLM_MAX_CONN};
+
+        proxy_pass http://${VLLM_EMBED_UPSTREAM}/v1/embeddings;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 600s;
+        proxy_read_timeout 600s;
+    }
+
+    location = /v1/rerank {
+        limit_req zone=llm_rps burst=${VLLM_BURST} nodelay;
+        limit_conn llm_conn ${VLLM_MAX_CONN};
+
+        proxy_pass http://${VLLM_RERANK_UPSTREAM}/v1/rerank;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 600s;
+        proxy_read_timeout 600s;
+    }
+
+    location /v1/ {
+        limit_req zone=llm_rps burst=${VLLM_BURST} nodelay;
+        limit_conn llm_conn ${VLLM_MAX_CONN};
+
+        proxy_pass http://${VLLM_CHAT_UPSTREAM}/v1/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 600s;
+        proxy_read_timeout 600s;
+    }
+}
