@@ -473,7 +473,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--api-base", default="http://127.0.0.1:5050", help="API base URL")
     parser.add_argument("--agent-id", default="HuizhouPowerQAAgent", help="Agent ID")
     parser.add_argument("--agent-config-id", type=int, default=9, help="agent_config_id")
-    parser.add_argument("--request-timeout-sec", type=int, default=120, help="Per-request total timeout in seconds")
+    parser.add_argument("--request-timeout-sec", type=int, default=600, help="Per-request total timeout in seconds")
     parser.add_argument(
         "--output-dir",
         default="reports/huizhou_chat_benchmark",
