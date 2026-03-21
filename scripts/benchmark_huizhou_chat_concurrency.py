@@ -940,11 +940,15 @@ async def main_async(args: argparse.Namespace) -> int:
             results: list[RequestResult] = []
             summary: dict[str, Any] | None = None
             for concurrency in sweep_values:
-                print(f"[INFO] Sweep round start: concurrency={concurrency}")
+                round_queries = queries[:concurrency]
+                print(
+                    f"[INFO] Sweep round start: concurrency={concurrency}, "
+                    f"queries_in_round={len(round_queries)}"
+                )
                 sweep_results, sweep_summary = await run_benchmark_round(
                     session=session,
                     args=args,
-                    queries=queries,
+                    queries=round_queries,
                     token=token,
                     concurrency_limit=concurrency,
                 )
