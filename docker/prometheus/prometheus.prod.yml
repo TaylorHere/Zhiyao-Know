@@ -29,16 +29,6 @@ scrape_configs:
         regex: ".*_bucket"
         action: drop
 
-  - job_name: neo4j
-    metrics_path: /metrics
-    static_configs:
-      - targets: ["graph:2004"]
-    sample_limit: 4000
-    metric_relabel_configs:
-      - source_labels: [__name__]
-        regex: ".*_bucket"
-        action: drop
-
   - job_name: milvus
     metrics_path: /metrics
     static_configs:
