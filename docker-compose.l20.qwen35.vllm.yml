@@ -311,6 +311,8 @@ services:
     command:
       - --model
       - /models/Qwen/Qwen3-Embedding-0.6B
+      - --runner
+      - pooling
       - --served-model-name
       - Qwen3-Embedding-0.6B
       - --host
