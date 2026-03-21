@@ -1,4 +1,8 @@
+import os
+import sys
 from types import SimpleNamespace
+
+sys.path.append(os.getcwd())
 
 from src import config
 from src.models.rerank import OpenAIReranker, VLLMReranker, get_reranker
