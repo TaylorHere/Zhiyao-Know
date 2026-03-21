@@ -11,8 +11,8 @@ services:
 
     ulimits:
       nofile:
-        soft: 262144
-        hard: 262144
+        soft: 1048576
+        hard: 1048576
   crawler:
     build: null
     image: registry.cn-beijing.aliyuncs.com/wyhy/mirrors:yuxi-crawler-0.1.dev
@@ -26,8 +26,8 @@ services:
 
     ulimits:
       nofile:
-        soft: 262144
-        hard: 262144
+        soft: 1048576
+        hard: 1048576
   crawler-worker:
     image: registry.cn-beijing.aliyuncs.com/wyhy/mirrors:yuxi-crawler-0.1.dev
     pull_policy: always
@@ -40,8 +40,8 @@ services:
 
     ulimits:
       nofile:
-        soft: 262144
-        hard: 262144
+        soft: 1048576
+        hard: 1048576
   web:
     build: null
     image: registry.cn-beijing.aliyuncs.com/wyhy/mirrors:yuxi-web-0.5.dev
@@ -53,5 +53,5 @@ services:
     command: null
     ulimits:
       nofile:
-        soft: 262144
-        hard: 262144
+        soft: 1048576
+        hard: 1048576

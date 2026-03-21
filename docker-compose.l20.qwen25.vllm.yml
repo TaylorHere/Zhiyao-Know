@@ -12,12 +12,12 @@ services:
       - -c
       - >
         WORKERS=$(( $(nproc) / 2 )); if [ "$WORKERS" -lt 1 ]; then WORKERS=1; fi;
-        exec gunicorn server.main:app --workers "$WORKERS" --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:5050 --reload
+        exec uvicorn server.main:app --host 0.0.0.0 --port 5050 --workers "$WORKERS" --loop uvloop --http httptools
 
     ulimits:
       nofile:
-        soft: 262144
-        hard: 262144
+        soft: 1048576
+        hard: 1048576
   crawler:
     extends:
       file: docker-compose.yaml
@@ -25,8 +25,8 @@ services:
 
     ulimits:
       nofile:
-        soft: 262144
-        hard: 262144
+        soft: 1048576
+        hard: 1048576
   crawler-worker:
     extends:
       file: docker-compose.yaml
@@ -34,8 +34,8 @@ services:
 
     ulimits:
       nofile:
-        soft: 262144
-        hard: 262144
+        soft: 1048576
+        hard: 1048576
   app-redis:
     extends:
       file: docker-compose.yaml
@@ -43,8 +43,8 @@ services:
 
     ulimits:
       nofile:
-        soft: 262144
-        hard: 262144
+        soft: 1048576
+        hard: 1048576
   redis-exporter:
     extends:
       file: docker-compose.yaml
@@ -52,8 +52,8 @@ services:
 
     ulimits:
       nofile:
-        soft: 262144
-        hard: 262144
+        soft: 1048576
+        hard: 1048576
   web:
     extends:
       file: docker-compose.yaml
@@ -61,8 +61,8 @@ services:
 
     ulimits:
       nofile:
-        soft: 262144
-        hard: 262144
+        soft: 1048576
+        hard: 1048576
   graph:
     extends:
       file: docker-compose.yaml
@@ -70,8 +70,8 @@ services:
 
     ulimits:
       nofile:
-        soft: 262144
-        hard: 262144
+        soft: 1048576
+        hard: 1048576
   etcd:
     extends:
       file: docker-compose.yaml
@@ -79,8 +79,8 @@ services:
 
     ulimits:
       nofile:
-        soft: 262144
-        hard: 262144
+        soft: 1048576
+        hard: 1048576
   minio:
     extends:
       file: docker-compose.yaml
@@ -88,8 +88,8 @@ services:
 
     ulimits:
       nofile:
-        soft: 262144
-        hard: 262144
+        soft: 1048576
+        hard: 1048576
   milvus:
     extends:
       file: docker-compose.yaml
@@ -97,8 +97,8 @@ services:
 
     ulimits:
       nofile:
-        soft: 262144
-        hard: 262144
+        soft: 1048576
+        hard: 1048576
   postgres:
     extends:
       file: docker-compose.yaml
@@ -106,8 +106,8 @@ services:
 
     ulimits:
       nofile:
-        soft: 262144
-        hard: 262144
+        soft: 1048576
+        hard: 1048576
   postgres-exporter:
     extends:
       file: docker-compose.yaml
@@ -115,8 +115,8 @@ services:
 
     ulimits:
       nofile:
-        soft: 262144
-        hard: 262144
+        soft: 1048576
+        hard: 1048576
   prometheus:
     extends:
       file: docker-compose.yaml
@@ -127,8 +127,8 @@ services:
 
     ulimits:
       nofile:
-        soft: 262144
-        hard: 262144
+        soft: 1048576
+        hard: 1048576
   litellm-gateway:
     build:
       context: .
@@ -168,8 +168,8 @@ services:
       - app-network
     ulimits:
       nofile:
-        soft: 262144
-        hard: 262144
+        soft: 1048576
+        hard: 1048576
     restart: unless-stopped
 
   vllm-qwen25-72b-awq:
@@ -207,8 +207,8 @@ services:
     ipc: host
     ulimits:
       nofile:
-        soft: 262144
-        hard: 262144
+        soft: 1048576
+        hard: 1048576
       memlock: -1
       stack: 67108864
     deploy:
@@ -260,8 +260,8 @@ services:
       - app-network
     ulimits:
       nofile:
-        soft: 262144
-        hard: 262144
+        soft: 1048576
+        hard: 1048576
     restart: unless-stopped
 
   vllm-bge-reranker-v2-m3-cpu:
@@ -296,8 +296,8 @@ services:
       - app-network
     ulimits:
       nofile:
-        soft: 262144
-        hard: 262144
+        soft: 1048576
+        hard: 1048576
     restart: unless-stopped
 
   paddlex:
@@ -334,8 +334,8 @@ services:
       - app-network
     ulimits:
       nofile:
-        soft: 262144
-        hard: 262144
+        soft: 1048576
+        hard: 1048576
     restart: unless-stopped
 
 networks:
