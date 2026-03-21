@@ -1,4 +1,5 @@
 import os
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
@@ -170,12 +171,44 @@ class Neo4jConnectionManager:
             self.driver = GD.driver(uri, auth=(username, password))
             # 测试连接
             with self.driver.session() as session:
-                session.run("RETURN 1")
+                session.run("RETURN 1").consume()
             self.status = "open"
             logger.info("Successfully connected to Neo4j")
         except Exception as e:
+            # 某些环境下默认数据库 neo4j 可能被误删，尝试自动恢复
+            if self._is_database_not_found_error(e) and self._try_create_default_database():
+                self.status = "open"
+                logger.info("Successfully connected to Neo4j after creating default database")
+                return
+
             logger.error(f"Failed to connect to Neo4j: {e}")
-            raise
+            # 图谱连接失败不应阻塞 API 启动，保持 closed 状态供上层判定
+            self.close()
+
+    def _is_database_not_found_error(self, error: Exception) -> bool:
+        """判断是否为默认数据库不存在错误"""
+        error_text = str(error)
+        return "DatabaseNotFound" in error_text or "database not found" in error_text.lower()
+
+    def _try_create_default_database(self) -> bool:
+        """当默认数据库不存在时，尝试创建 neo4j 数据库"""
+        if not self.driver:
+            return False
+
+        db_name = os.environ.get("NEO4J_DATABASE", "neo4j")
+        if not re.fullmatch(r"[A-Za-z0-9_]+", db_name or ""):
+            logger.warning(f"Invalid NEO4J_DATABASE value '{db_name}', fallback to 'neo4j'")
+            db_name = "neo4j"
+
+        try:
+            with self.driver.session(database="system") as session:
+                session.run(f"CREATE DATABASE `{db_name}` IF NOT EXISTS").consume()
+            with self.driver.session(database=db_name) as session:
+                session.run("RETURN 1").consume()
+            return True
+        except Exception as create_error:
+            logger.error(f"Failed to create default Neo4j database '{db_name}': {create_error}")
+            return False
 
     def _is_connected(self) -> bool:
         """检查连接是否有效"""
