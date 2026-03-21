@@ -169,6 +169,8 @@ services:
     command:
       - --model
       - /models/Qwen/Qwen3-Embedding-0.6B
+      - --task
+      - embed
       - --served-model-name
       - Qwen3-Embedding-0.6B
       - --host
@@ -201,6 +203,8 @@ services:
     command:
       - --model
       - /models/Qwen/Qwen3-Reranker-0.6B
+      - --task
+      - rerank
       - --served-model-name
       - qwen3-rerank
       - --host
