@@ -1,0 +1,18 @@
+HuizhouPowerQAAgent 并发压测摘要
+========================================
+started_at: 2026-03-21T06:04:04.559467+00:00
+finished_at: 2026-03-21T06:04:53.217507+00:00
+elapsed_sec: 48.658
+throughput_rps: 0.062
+total_requests: 3
+success_requests: 3
+error_requests: 0
+success_rate: 100.0%
+status_code_counts: {"200": 3}
+error_type_counts: {}
+
+total_ms (仅成功请求):
+{"min": 28630.501, "max": 48655.618, "avg": 37537.439, "p50": 35326.199, "p90": 45989.734, "p95": 47322.676, "p99": 48389.03}
+
+ttft_ms (仅成功请求):
+{"min": 56.877, "max": 58.214, "avg": 57.546, "p50": 57.546, "p90": 58.08, "p95": 58.147, "p99": 58.201}

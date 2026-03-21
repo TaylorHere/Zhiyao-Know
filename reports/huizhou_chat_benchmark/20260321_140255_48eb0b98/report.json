@@ -1,0 +1,102 @@
+{
+  "params": {
+    "run_id": "20260321_140255_48eb0b98",
+    "api_base": "http://127.0.0.1:5050",
+    "agent_id": "HuizhouPowerQAAgent",
+    "agent_config_id": 9,
+    "csv": "/Users/wangying/developments/tools/Yuxi-Know/data/qa_datasets/hz_power_marketing_qa_dataset_20260320.csv",
+    "query_col": "query",
+    "query_count": 3,
+    "dispatch_mode": "all_at_once",
+    "request_timeout_sec": 120,
+    "auth_mode": "docker_compose",
+    "save_full_answer": false,
+    "limit": 3
+  },
+  "summary": {
+    "run": {
+      "started_at": "2026-03-21T06:02:55.622676+00:00",
+      "finished_at": "2026-03-21T06:03:11.544811+00:00",
+      "elapsed_sec": 15.922,
+      "throughput_rps": 0.188,
+      "total_requests": 3,
+      "success_requests": 0,
+      "error_requests": 3,
+      "success_rate": 0.0,
+      "status_code_counts": {
+        "200": 3
+      },
+      "error_type_counts": {
+        "ValueError": 3
+      }
+    },
+    "latency_total_ms": {
+      "min": null,
+      "max": null,
+      "avg": null,
+      "p50": null,
+      "p90": null,
+      "p95": null,
+      "p99": null
+    },
+    "latency_ttft_ms": {
+      "min": null,
+      "max": null,
+      "avg": null,
+      "p50": null,
+      "p90": null,
+      "p95": null,
+      "p99": null
+    }
+  },
+  "results": [
+    {
+      "index": 1,
+      "query": "\"优化营商环境政策打折扣\" 的印证资料包括哪些？",
+      "request_started_at": "2026-03-21T06:02:55.624018+00:00",
+      "request_ended_at": "2026-03-21T06:03:09.094434+00:00",
+      "http_status": 200,
+      "ok": false,
+      "finished": false,
+      "total_ms": 13470.678,
+      "ttft_ms": 200.504,
+      "stream_lines": 16,
+      "response_chars": 2,
+      "answer_preview": "",
+      "error_type": "ValueError",
+      "error_message": "Chunk too big"
+    },
+    {
+      "index": 2,
+      "query": "\"优化营商环境政策打折扣\" 的整改措施是什么？",
+      "request_started_at": "2026-03-21T06:02:55.625871+00:00",
+      "request_ended_at": "2026-03-21T06:03:11.544303+00:00",
+      "http_status": 200,
+      "ok": false,
+      "finished": false,
+      "total_ms": 15918.413,
+      "ttft_ms": 200.613,
+      "stream_lines": 16,
+      "response_chars": 2,
+      "answer_preview": "",
+      "error_type": "ValueError",
+      "error_message": "Chunk too big"
+    },
+    {
+      "index": 3,
+      "query": "\"优化营商环境政策打折扣\" 的监管依据是什么？",
+      "request_started_at": "2026-03-21T06:02:55.626179+00:00",
+      "request_ended_at": "2026-03-21T06:03:10.837879+00:00",
+      "http_status": 200,
+      "ok": false,
+      "finished": false,
+      "total_ms": 15211.681,
+      "ttft_ms": 211.904,
+      "stream_lines": 16,
+      "response_chars": 2,
+      "answer_preview": "",
+      "error_type": "ValueError",
+      "error_message": "Chunk too big"
+    }
+  ]
+}

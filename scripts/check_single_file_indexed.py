@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import subprocess
 from pathlib import Path
 
 import httpx
@@ -27,6 +28,7 @@ PASSWORD = os.getenv("YUXI_TEST_PASSWORD", "Admin@123456")
 KB_NAME = os.getenv("YUXI_TEST_KB_NAME", "单文件导入测试库")
 
 SUCCESS_STATUSES = {"indexed", "done"}
+ERROR_STATUSES = {"error_indexing", "error_parsing", "failed"}
 
 
 async def get_token() -> str:
@@ -52,7 +54,7 @@ async def get_kb_id(token: str, kb_name: str) -> str:
     raise RuntimeError(f"未找到知识库: {kb_name}")
 
 
-async def check_file_status(token: str, kb_id: str, filename: str) -> tuple[bool, str]:
+async def get_file_record(token: str, kb_id: str, filename: str) -> dict | None:
     headers = {"Authorization": f"Bearer {token}"}
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.get(f"{API_BASE_URL}/api/knowledge/databases/{kb_id}", headers=headers)
@@ -62,9 +64,29 @@ async def check_file_status(token: str, kb_id: str, filename: str) -> tuple[bool
     files = (resp.json() or {}).get("files") or {}
     for _, info in files.items():
         if info.get("filename") == filename:
-            status = (info.get("status") or "").lower()
-            return status in SUCCESS_STATUSES, status
-    return False, "not_found"
+            return info
+    return None
+
+
+async def get_document_basic_meta(token: str, kb_id: str, file_id: str) -> dict:
+    headers = {"Authorization": f"Bearer {token}"}
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.get(f"{API_BASE_URL}/api/knowledge/databases/{kb_id}/documents/{file_id}/basic", headers=headers)
+    if resp.status_code != 200:
+        return {}
+    return (resp.json() or {}).get("meta") or {}
+
+
+def try_tail_api_logs(file_id: str, max_lines: int = 200) -> str:
+    cmd = ["docker", "compose", "logs", "api", "--tail", str(max_lines)]
+    proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
+    if proc.returncode != 0:
+        return ""
+    lines = []
+    for ln in (proc.stdout or "").splitlines():
+        if file_id in ln or "Index failed" in ln or "Failed to parse file" in ln:
+            lines.append(ln)
+    return "\n".join(lines[-20:])
 
 
 async def main() -> None:
@@ -82,18 +104,36 @@ async def main() -> None:
 
     token = await get_token()
     kb_id = await get_kb_id(token, args.kb_name)
-    ok, status = await check_file_status(token, kb_id, filename)
+    record = await get_file_record(token, kb_id, filename)
+    if not record:
+        raise SystemExit("结果: 未找到该文件记录")
 
-    print(f"kb_id={kb_id}, file={filename}, status={status}")
+    file_id = record.get("file_id")
+    status = (record.get("status") or "").lower()
+    ok = status in SUCCESS_STATUSES
+    print(f"kb_id={kb_id}, file={filename}, file_id={file_id}, status={status}")
     if ok:
         print("结果: 已真正入库")
         return
 
-    if status == "not_found":
-        raise SystemExit("结果: 未找到该文件记录")
+    if status in ERROR_STATUSES and file_id:
+        meta = await get_document_basic_meta(token, kb_id, file_id)
+        err = meta.get("error") or meta.get("error_message")
+        updated_at = meta.get("updated_at")
+        if err:
+            print(f"错误详情: {err}")
+        if updated_at:
+            print(f"失败时间: {updated_at}")
+
+        log_hint = try_tail_api_logs(file_id)
+        if log_hint:
+            print("最近相关日志（api）：")
+            print(log_hint)
+        else:
+            print("可手工排查：docker compose logs api --tail 300 | grep -E 'Index failed|Failed to parse file|%s'" % file_id)
+
     raise SystemExit(f"结果: 尚未真正入库（当前状态: {status}）")
 
 
 if __name__ == "__main__":
     asyncio.run(main())
-
