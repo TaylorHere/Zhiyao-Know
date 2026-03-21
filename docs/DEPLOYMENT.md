@@ -230,6 +230,7 @@ CREATE TABLE kb_access_control (
 - `POSTGRES_MAX_OVERFLOW` - 连接池可额外创建的连接数（默认 `20`）
 - `POSTGRES_POOL_TIMEOUT` - 获取连接的超时时间（秒，默认 `30`）
 - `POSTGRES_POOL_RECYCLE` - 连接回收时间（秒，默认 `1800`）
+- `POSTGRES_MAX_CONNECTIONS` - PostgreSQL 服务器最大连接数（默认 `300`，用于避免 `too many clients already`）
 - `YUXI_SUPER_ADMIN_NAME` - 超级管理员用户名
 - `YUXI_SUPER_ADMIN_PASSWORD` - 超级管理员密码
 
