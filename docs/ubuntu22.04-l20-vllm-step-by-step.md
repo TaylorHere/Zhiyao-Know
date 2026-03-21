@@ -267,8 +267,8 @@ modelscope download --model "Qwen/Qwen3.5-35B-A3B-FP8" \
 modelscope download --model "Qwen/Qwen3-Embedding-0.6B" \
   --local_dir /opt/yuxi-know/Zhiyao-Know/models/Qwen/Qwen3-Embedding-0.6B
 
-modelscope download --model "Qwen/Qwen3-Reranker-0.6B" \
-  --local_dir /opt/yuxi-know/Zhiyao-Know/models/Qwen/Qwen3-Reranker-0.6B
+modelscope download --model "BAAI/bge-reranker-v2-m3" \
+  --local_dir /opt/yuxi-know/Zhiyao-Know/models/BAAI/bge-reranker-v2-m3
 ```
 
 ---
@@ -417,7 +417,7 @@ docker logs -f vllm-qwen35-35b-a3b-fp8
   - `Qwen/Qwen2.5-72B-Instruct-AWQ`
   - `Qwen/Qwen3.5-35B-A3B-FP8`（如果使用 qwen35）
   - `Qwen/Qwen3-Embedding-0.6B`
-  - `Qwen/Qwen3-Reranker-0.6B`
+  - `BAAI/bge-reranker-v2-m3`
 
 ### 11.5 根分区满了，但 `lsblk` 看起来磁盘很大
 
