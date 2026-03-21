@@ -44,7 +44,7 @@ PASSWORD = os.getenv("YUXI_TEST_PASSWORD") or os.getenv("YUXI_SUPER_ADMIN_PASSWO
 PRESET_TOKEN = os.getenv("YUXI_TEST_TOKEN") or os.getenv("YUXI_ACCESS_TOKEN")
 HTTP_TIMEOUT = float(os.getenv("YUXI_HTTP_TIMEOUT", "30"))
 LOGIN_RETRIES = int(os.getenv("YUXI_LOGIN_RETRIES", "3"))
-SOURCE_DIR = "/Users/wangying/Documents/外包/9-罗总-惠州电力局人工智能/4.文件汇总/文件汇总"
+SOURCE_DIR = "/mnt/usb2/4.文件汇总"
 
 # 支持的文件类型
 SUPPORTED_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt", ".xls", ".xlsx", ".ppt", ".pptx"}
