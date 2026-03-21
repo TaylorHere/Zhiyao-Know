@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-检查隐藏知识库与绑定智能体是否存在且工作正常。
+Check whether the hidden knowledge base and bound agent exist and work correctly.
 
-默认检查项：
-1) 隐藏知识库存在且 visibility=agent_only
-2) HuizhouPowerQAAgent 仅绑定该隐藏库
-3) HuizhouPowerQAAgent 的默认配置 knowledges 仅包含该隐藏库
-4) 发起一条 agent 问答，确认返回 finished 且有回答内容
+Default checks:
+1) Hidden KB exists and visibility=agent_only
+2) HuizhouPowerQAAgent is bound only to this hidden KB
+3) HuizhouPowerQAAgent default config contains only this hidden KB
+4) One chat call returns finished with non-empty answer
 """
 
 from __future__ import annotations
@@ -59,10 +59,10 @@ def check_hidden_kb(kb_name: str) -> tuple[bool, str]:
         f"select db_id,name,visibility from knowledge_bases where name='{kb_name}' limit 1;"
     )
     if not out:
-        return False, "隐藏知识库不存在"
+        return False, "Hidden KB not found"
     db_id, name, visibility = out.split("|", 2)
     if visibility != "agent_only":
-        return False, f"隐藏知识库 visibility 异常: {visibility}"
+        return False, f"Unexpected hidden KB visibility: {visibility}"
     return True, db_id
 
 
@@ -72,7 +72,7 @@ def check_binding(agent_id: str, expected_kb_id: str) -> tuple[bool, str]:
     )
     kb_ids = [x.strip() for x in out.splitlines() if x.strip()]
     if kb_ids != [expected_kb_id]:
-        return False, f"绑定异常: {kb_ids}"
+        return False, f"Unexpected bindings: {kb_ids}"
     return True, "OK"
 
 
@@ -82,7 +82,7 @@ def check_default_config(agent_id: str, kb_name: str) -> tuple[bool, str]:
         f"from agent_configs where agent_id='{agent_id}' order by id;"
     )
     if not out:
-        return False, "未找到 agent 配置"
+        return False, "Agent config not found"
     lines = [x for x in out.splitlines() if x.strip()]
     default_line = None
     for line in lines:
@@ -91,11 +91,11 @@ def check_default_config(agent_id: str, kb_name: str) -> tuple[bool, str]:
             default_line = line
             break
     if default_line is None:
-        return False, "未找到默认配置"
+        return False, "Default config not found"
     _, _, knowledges_text = default_line.split("|", 2)
     knowledges = json.loads(knowledges_text)
     if knowledges != [kb_name]:
-        return False, f"默认配置 knowledges 异常: {knowledges}"
+        return False, f"Unexpected knowledges in default config: {knowledges}"
     return True, "OK"
 
 
@@ -113,7 +113,7 @@ def issue_token() -> str:
     out = run_cmd(cmd)
     lines = [x.strip() for x in out.splitlines() if x.strip()]
     if not lines:
-        raise RuntimeError("无法生成 token")
+        raise RuntimeError("Failed to issue token")
     return lines[-1]
 
 
@@ -138,11 +138,11 @@ def chat_smoke_test(api_base: str, agent_id: str, agent_config_id: int, query: s
         with urllib.request.urlopen(req, timeout=120) as resp:
             body = resp.read().decode("utf-8", errors="ignore")
     except urllib.error.URLError as e:
-        return False, f"问答请求失败: {e}"
+        return False, f"Chat request failed: {e}"
     except TimeoutError:
-        return False, "问答请求超时（120s）"
+        return False, "Chat request timeout (120s)"
     except Exception as e:
-        return False, f"问答请求异常: {e}"
+        return False, f"Chat request exception: {e}"
 
     finished = False
     answer = ""
@@ -161,16 +161,16 @@ def chat_smoke_test(api_base: str, agent_id: str, agent_config_id: int, query: s
             answer += part
 
     if not finished:
-        return False, "问答未完成（缺少 finished）"
+        return False, "Chat did not finish (missing finished status)"
     if not answer.strip():
-        return False, "问答无有效回答内容"
+        return False, "Chat answer is empty"
     return True, answer[:120]
 
 
 def auto_fix_hidden_setup() -> tuple[bool, str]:
     """
-    自动修复隐藏知识库与绑定：
-    调用 FirstRunSeedService.seed_hidden_huizhou_kb(operator_id=1, department_id=1)
+    Auto-fix hidden KB and binding by calling:
+    FirstRunSeedService.seed_hidden_huizhou_kb(operator_id=1, department_id=1)
     """
     cmd = [
         "docker",
@@ -191,7 +191,7 @@ def auto_fix_hidden_setup() -> tuple[bool, str]:
         out = run_cmd(cmd)
         return True, out
     except Exception as e:
-        return False, f"自动修复执行失败: {e}"
+        return False, f"Auto-fix execution failed: {e}"
 
 
 @dataclass
@@ -206,35 +206,35 @@ class CheckContext:
 def run_all_checks(ctx: CheckContext) -> tuple[list[tuple[str, bool, str]], bool]:
     checks: list[tuple[str, bool, str]] = []
     ok, kb_result = check_hidden_kb(ctx.kb_name)
-    checks.append(("隐藏知识库存在且 agent_only", ok, kb_result))
+    checks.append(("Hidden KB exists and is agent_only", ok, kb_result))
     if not ok:
         return checks, False
     kb_id = kb_result
 
     ok, detail = check_binding(ctx.agent_id, kb_id)
-    checks.append(("Agent 仅绑定隐藏库", ok, detail))
+    checks.append(("Agent bound only to hidden KB", ok, detail))
 
     ok2, detail2 = check_default_config(ctx.agent_id, ctx.kb_name)
-    checks.append(("默认配置仅指向隐藏库", ok2, detail2))
+    checks.append(("Default config points only to hidden KB", ok2, detail2))
 
     ok3, detail3 = chat_smoke_test(ctx.api_base, ctx.agent_id, ctx.agent_config_id, ctx.query)
-    checks.append(("Agent 问答可用", ok3, detail3))
+    checks.append(("Agent chat is available", ok3, detail3))
 
     all_ok = all(passed for _, passed, _ in checks)
     return checks, all_ok
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="隐藏知识库与绑定智能体健康检查")
+    parser = argparse.ArgumentParser(description="Health check for hidden KB and bound agent")
     parser.add_argument("--kb-name", default="惠州营销部问答隐藏知识库")
     parser.add_argument("--agent-id", default="HuizhouPowerQAAgent")
     parser.add_argument("--agent-config-id", type=int, default=9)
     parser.add_argument("--api-base", default="http://127.0.0.1:5050")
-    parser.add_argument("--query", default="新能源上网电价改革如何区分存量项目和增量项目？")
+    parser.add_argument("--query", default="How are legacy and incremental projects distinguished in NEV feed-in tariff reform?")
     parser.add_argument(
         "--auto-fix-on-fail",
         action="store_true",
-        help="检查失败时自动执行隐藏库导入+绑定修复，然后复检",
+        help="Run auto-fix when check fails, then re-check",
     )
     args = parser.parse_args()
 
@@ -255,14 +255,14 @@ def main() -> int:
         return 0
 
     if args.auto_fix_on_fail:
-        print("检测失败，开始执行自动修复...")
+        print("Check failed. Starting auto-fix...")
         fixed, fix_msg = auto_fix_hidden_setup()
-        print(f"[{'PASS' if fixed else 'FAIL'}] 自动修复执行: {fix_msg}")
+        print(f"[{'PASS' if fixed else 'FAIL'}] Auto-fix execution: {fix_msg}")
         if not fixed:
             print("RESULT: FAIL")
             return 3
 
-        print("自动修复完成，开始复检...")
+        print("Auto-fix completed. Re-checking...")
         checks2, all_ok2 = run_all_checks(ctx)
         for name, passed, detail in checks2:
             print(f"[{'PASS' if passed else 'FAIL'}] {name}: {detail}")

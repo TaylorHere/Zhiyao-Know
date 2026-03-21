@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-使用 CSV 中的 query 字段并发压测 HuizhouPowerQAAgent。
+Concurrent benchmark for HuizhouPowerQAAgent using the CSV `query` column.
 
-特点：
-1) 默认一次性全量并发发出（无并发限流）
-2) 记录每个请求的细粒度指标（HTTP 状态、TTFT、总耗时、流式行数、是否 finished、错误信息等）
-3) 输出详细报告：JSON（完整）、CSV（明细）、TXT（摘要）
+Features:
+1) Full fan-out by default (all requests dispatched at once)
+2) Per-request metrics (HTTP status, TTFT, total latency, stream lines, finished flag, errors)
+3) Detailed outputs: JSON (full), CSV (rows), TXT (summary)
 """
 
 from __future__ import annotations
@@ -93,7 +93,7 @@ def login_by_password(api_base: str, username: str, password: str, timeout: int)
         body = json.loads(resp.read().decode("utf-8", errors="ignore"))
     token = body.get("access_token")
     if not token:
-        raise RuntimeError(f"登录成功但未返回 access_token: {body}")
+        raise RuntimeError(f"Login succeeded but no access_token returned: {body}")
     return token
 
 
@@ -110,10 +110,10 @@ def token_from_docker_compose() -> str:
     ]
     proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
     if proc.returncode != 0:
-        raise RuntimeError(f"docker 生成 token 失败: {proc.stderr.strip()}")
+        raise RuntimeError(f"Failed to generate token via docker compose: {proc.stderr.strip()}")
     lines = [x.strip() for x in (proc.stdout or "").splitlines() if x.strip()]
     if not lines:
-        raise RuntimeError("docker 生成 token 失败: 输出为空")
+        raise RuntimeError("Failed to generate token via docker compose: empty output")
     return lines[-1]
 
 
@@ -127,7 +127,7 @@ def resolve_token(args: argparse.Namespace) -> tuple[str, str]:
         try:
             return login_by_password(args.api_base, username, password, args.request_timeout_sec), "password_login"
         except Exception as e:
-            print(f"[WARN] 账号密码换 token 失败，回退 docker compose 生成 token: {e}")
+            print(f"[WARN] Username/password token login failed; fallback to docker compose token: {e}")
 
     return token_from_docker_compose(), "docker_compose"
 
@@ -190,7 +190,7 @@ async def run_one(
                     if obj.get("status") == "finished":
                         finished = True
 
-            # 处理末尾没有换行符的最后一段
+            # Handle the final buffered line without trailing newline
             tail = buf.strip()
             if tail:
                 stream_lines += 1
@@ -330,7 +330,7 @@ def dump_summary_text(summary: dict[str, Any], out_txt: Path) -> None:
     t_ttft = summary["latency_ttft_ms"]
 
     lines = [
-        "HuizhouPowerQAAgent 并发压测摘要",
+        "HuizhouPowerQAAgent Concurrent Benchmark Summary",
         "=" * 40,
         f"started_at: {run['started_at']}",
         f"finished_at: {run['finished_at']}",
@@ -343,10 +343,10 @@ def dump_summary_text(summary: dict[str, Any], out_txt: Path) -> None:
         f"status_code_counts: {json.dumps(run['status_code_counts'], ensure_ascii=False)}",
         f"error_type_counts: {json.dumps(run['error_type_counts'], ensure_ascii=False)}",
         "",
-        "total_ms (仅成功请求):",
+        "total_ms (successful requests only):",
         json.dumps(t_total, ensure_ascii=False),
         "",
-        "ttft_ms (仅成功请求):",
+        "ttft_ms (successful requests only):",
         json.dumps(t_ttft, ensure_ascii=False),
     ]
     out_txt.write_text("\n".join(lines), encoding="utf-8")
@@ -355,11 +355,11 @@ def dump_summary_text(summary: dict[str, Any], out_txt: Path) -> None:
 async def main_async(args: argparse.Namespace) -> int:
     csv_path = Path(args.csv).expanduser().resolve()
     if not csv_path.exists():
-        raise FileNotFoundError(f"CSV 文件不存在: {csv_path}")
+        raise FileNotFoundError(f"CSV not found: {csv_path}")
 
     queries = read_queries(csv_path, args.query_col, args.limit)
     if not queries:
-        raise RuntimeError(f"未读取到有效 query（列: {args.query_col}）")
+        raise RuntimeError(f"No valid queries found (column: {args.query_col})")
 
     token, auth_mode = resolve_token(args)
 
@@ -445,32 +445,32 @@ async def main_async(args: argparse.Namespace) -> int:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="CSV query 并发压测 HuizhouPowerQAAgent")
+    parser = argparse.ArgumentParser(description="Concurrent benchmark for HuizhouPowerQAAgent using CSV queries")
     parser.add_argument(
         "--csv",
         default="data/qa_datasets/hz_power_marketing_qa_dataset_20260320.csv",
-        help="输入 CSV 路径",
+        help="Input CSV path",
     )
-    parser.add_argument("--query-col", default="query", help="CSV 中问题列名")
-    parser.add_argument("--api-base", default="http://127.0.0.1:5050", help="API 基础地址")
-    parser.add_argument("--agent-id", default="HuizhouPowerQAAgent", help="智能体 ID")
+    parser.add_argument("--query-col", default="query", help="Query column name in CSV")
+    parser.add_argument("--api-base", default="http://127.0.0.1:5050", help="API base URL")
+    parser.add_argument("--agent-id", default="HuizhouPowerQAAgent", help="Agent ID")
     parser.add_argument("--agent-config-id", type=int, default=9, help="agent_config_id")
-    parser.add_argument("--request-timeout-sec", type=int, default=120, help="单请求总超时秒数")
+    parser.add_argument("--request-timeout-sec", type=int, default=120, help="Per-request total timeout in seconds")
     parser.add_argument(
         "--output-dir",
         default="reports/huizhou_chat_benchmark",
-        help="报告输出目录（会自动创建 run_id 子目录）",
+        help="Output directory (run_id subfolder will be created)",
     )
-    parser.add_argument("--limit", type=int, default=None, help="仅测试前 N 条 query（默认全量）")
+    parser.add_argument("--limit", type=int, default=None, help="Use first N queries only (default: all)")
 
-    parser.add_argument("--token", default=None, help="可直接传 Bearer Token")
-    parser.add_argument("--username", default=None, help="账号登录获取 token（可选）")
-    parser.add_argument("--password", default=None, help="账号登录获取 token（可选）")
+    parser.add_argument("--token", default=None, help="Provide Bearer token directly")
+    parser.add_argument("--username", default=None, help="Username for login token (optional)")
+    parser.add_argument("--password", default=None, help="Password for login token (optional)")
 
     parser.add_argument(
         "--save-full-answer",
         action="store_true",
-        help="在 report.json 中保存完整 answer（默认只存预览片段）",
+        help="Store full answer in report.json (default stores preview only)",
     )
     return parser.parse_args()
 
