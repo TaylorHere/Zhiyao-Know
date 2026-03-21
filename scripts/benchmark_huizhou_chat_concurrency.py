@@ -140,6 +140,16 @@ def extract_output_tokens_from_stream_obj(obj: dict[str, Any]) -> int | None:
     return total_fallback
 
 
+def resolve_effective_output_tokens(output_tokens: int | None, response_chars: int, stream_lines: int) -> int | None:
+    if output_tokens is not None:
+        return output_tokens
+    if response_chars > 0:
+        return response_chars
+    if stream_lines > 0:
+        return stream_lines
+    return None
+
+
 def read_queries(csv_path: Path, query_col: str, limit: int | None) -> list[str]:
     queries: list[str] = []
     with csv_path.open("r", encoding="utf-8-sig", newline="") as f:
@@ -313,7 +323,7 @@ async def run_one(
             t1 = time.perf_counter()
             total_ms = (t1 - t0) * 1000
             ttft_ms = (first_chunk_ts - t0) * 1000 if first_chunk_ts else None
-            effective_output_tokens = output_tokens if output_tokens is not None else (response_chars or None)
+            effective_output_tokens = resolve_effective_output_tokens(output_tokens, response_chars, stream_lines)
             output_tokens_per_sec = (
                 (effective_output_tokens / (total_ms / 1000))
                 if effective_output_tokens is not None and total_ms > 0
@@ -341,7 +351,7 @@ async def run_one(
                 error_message=None,
             )
         except asyncio.TimeoutError as e:
-            effective_output_tokens = output_tokens if output_tokens is not None else (response_chars or None)
+            effective_output_tokens = resolve_effective_output_tokens(output_tokens, response_chars, stream_lines)
             return RequestResult(
                 index=idx,
                 query=query,
@@ -365,7 +375,7 @@ async def run_one(
                 error_message=str(e),
             )
         except Exception as e:
-            effective_output_tokens = output_tokens if output_tokens is not None else (response_chars or None)
+            effective_output_tokens = resolve_effective_output_tokens(output_tokens, response_chars, stream_lines)
             return RequestResult(
                 index=idx,
                 query=query,
