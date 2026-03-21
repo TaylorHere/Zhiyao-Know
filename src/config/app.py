@@ -226,11 +226,52 @@ class Config(BaseModel):
         if os.getenv("TAVILY_API_KEY"):
             self.enable_web_search = True
 
+        # Apply env-based model/runtime overrides (including LiteLLM one-switch setup)
+        self._apply_env_overrides()
+
         # 获取可用的模型提供商
         self.valuable_model_provider = [k for k, v in self.model_provider_status.items() if v]
 
         if not self.valuable_model_provider:
             raise ValueError("No model provider available, please check your `.env` file.")
+
+    def _env_truthy(self, value: str | None) -> bool:
+        if value is None:
+            return False
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+
+    def _apply_env_overrides(self):
+        """Apply runtime overrides from environment variables.
+
+        Supported keys:
+        - YUXI_AUTO_USE_LITELLM
+        - YUXI_DEFAULT_MODEL
+        - YUXI_FAST_MODEL
+        - YUXI_EMBED_MODEL
+        - YUXI_RERANKER_MODEL
+        - YUXI_ENABLE_RERANKER
+        """
+        # One-switch LiteLLM profile
+        if self._env_truthy(os.getenv("YUXI_AUTO_USE_LITELLM")):
+            litellm_chat_model = os.getenv("VLLM_CHAT_MODEL", "Qwen2.5-72B-Instruct-AWQ")
+            self.default_model = f"vllm-local/{litellm_chat_model}"
+            self.fast_model = f"vllm-local/{litellm_chat_model}"
+            self.embed_model = "vllm/Qwen/Qwen3-Embedding-0.6B"
+            self.reranker = "vllm/BAAI/bge-reranker-v2-m3"
+            self.enable_reranker = True
+            logger.info("Applied LiteLLM auto profile from env: YUXI_AUTO_USE_LITELLM=true")
+
+        # Explicit field-level overrides (higher priority)
+        if os.getenv("YUXI_DEFAULT_MODEL"):
+            self.default_model = os.getenv("YUXI_DEFAULT_MODEL")  # type: ignore[assignment]
+        if os.getenv("YUXI_FAST_MODEL"):
+            self.fast_model = os.getenv("YUXI_FAST_MODEL")  # type: ignore[assignment]
+        if os.getenv("YUXI_EMBED_MODEL"):
+            self.embed_model = os.getenv("YUXI_EMBED_MODEL")  # type: ignore[assignment]
+        if os.getenv("YUXI_RERANKER_MODEL"):
+            self.reranker = os.getenv("YUXI_RERANKER_MODEL")  # type: ignore[assignment]
+        if os.getenv("YUXI_ENABLE_RERANKER") is not None:
+            self.enable_reranker = self._env_truthy(os.getenv("YUXI_ENABLE_RERANKER"))
 
     def save(self):
         """保存配置到 TOML 文件（仅保存用户修改的字段）"""
