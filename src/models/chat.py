@@ -1,5 +1,6 @@
 import os
 import traceback
+from urllib.parse import urlparse
 
 from openai import AsyncOpenAI
 from tenacity import before_sleep_log, retry, retry_if_exception_type, stop_after_attempt, wait_exponential
@@ -31,6 +32,24 @@ class OpenAIBase:
         self.model_name = model_name
         self.model_identifier = model_identifier or model_name
         self.info = kwargs
+        self.is_litellm_queue_endpoint = self._is_litellm_queue_endpoint(base_url)
+
+    @staticmethod
+    def _is_litellm_queue_endpoint(base_url: str) -> bool:
+        if not base_url:
+            return False
+        path = urlparse(base_url).path.rstrip("/")
+        return path.endswith("/queue")
+
+    def _build_completion_kwargs(self, messages, stream: bool) -> dict:
+        payload = {
+            "model": self.model_name,
+            "messages": messages,
+            "stream": stream,
+        }
+        if self.is_litellm_queue_endpoint:
+            payload["extra_body"] = {"priority": 0}
+        return payload
 
     @retry(
         stop=stop_after_attempt(3),
@@ -63,21 +82,13 @@ class OpenAIBase:
         return response
 
     async def _stream_response(self, messages):
-        response = await self.client.chat.completions.create(
-            model=self.model_name,
-            messages=messages,
-            stream=True,
-        )
+        response = await self.client.chat.completions.create(**self._build_completion_kwargs(messages, stream=True))
         async for chunk in response:
             if len(chunk.choices) > 0:
                 yield chunk.choices[0].delta
 
     async def _get_response(self, messages):
-        response = await self.client.chat.completions.create(
-            model=self.model_name,
-            messages=messages,
-            stream=False,
-        )
+        response = await self.client.chat.completions.create(**self._build_completion_kwargs(messages, stream=False))
         return response
 
     async def get_models(self):
