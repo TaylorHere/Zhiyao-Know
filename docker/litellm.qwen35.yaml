@@ -4,7 +4,7 @@ model_list:
       model: openai/Qwen3.5-35B-A3B-FP8
       api_base: http://vllm-qwen35-35b-a3b-fp8:8000/v1
       api_key: no_api_key
-      rpm: 72
+      rpm: 2000
       tpm: 180000
 
   - model_name: Qwen3-Embedding-0.6B
