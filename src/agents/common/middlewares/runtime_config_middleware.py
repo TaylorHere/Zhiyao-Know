@@ -103,7 +103,6 @@ class RuntimeConfigMiddleware(AgentMiddleware):
 
         model = load_chat_model(getattr(runtime_context, "model", None))
         enabled_tools = await self.get_tools_from_context(runtime_context)
-        system_prompt = getattr(runtime_context, "system_prompt", None)
         logger.debug(f"RuntimeConfigMiddleware: model={model}, "
                      f"tools={[t.name for t in enabled_tools]}. ")
 
@@ -117,19 +116,9 @@ class RuntimeConfigMiddleware(AgentMiddleware):
             else:
                 remaining.append(msg)
 
-        existing_contents = [_get_message_content(m) for m in existing_systems]
-
-        new_systems: list[Any] = []
-        if system_prompt:
-            try:
-                idx = existing_contents.index(system_prompt)
-            except ValueError:
-                new_systems.append({"role": "system", "content": system_prompt})
-            else:
-                new_systems.append(existing_systems.pop(idx))
-                existing_contents.pop(idx)
-
-        messages = [*new_systems, *existing_systems, *remaining]
+        # Keep create_agent(system_prompt=...) as the single source of system prompt.
+        # Runtime middleware only normalizes ordering for vLLM compatibility.
+        messages = [*existing_systems, *remaining]
 
         request = request.override(model=model, tools=enabled_tools, messages=messages)
 
