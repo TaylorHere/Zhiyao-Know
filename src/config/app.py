@@ -251,15 +251,30 @@ class Config(BaseModel):
         - YUXI_RERANKER_MODEL
         - YUXI_ENABLE_RERANKER
         """
-        # One-switch LiteLLM profile
-        if self._env_truthy(os.getenv("YUXI_AUTO_USE_LITELLM")):
+        auto_flag = os.getenv("YUXI_AUTO_USE_LITELLM")
+        has_vllm_env = bool(
+            os.getenv("VLLM_CHAT_BASE_URL")
+            or os.getenv("VLLM_EMBED_BASE_URL")
+            or os.getenv("VLLM_RERANK_BASE_URL")
+        )
+        should_enable_litellm_profile = self._env_truthy(auto_flag) or (
+            auto_flag is None and has_vllm_env
+        )
+
+        # Auto LiteLLM profile:
+        # - explicit: YUXI_AUTO_USE_LITELLM=true
+        # - implicit: any VLLM_* base URL exists (compose profile driven)
+        if should_enable_litellm_profile:
             litellm_chat_model = os.getenv("VLLM_CHAT_MODEL", "Qwen2.5-72B-Instruct-AWQ")
             self.default_model = f"vllm-local/{litellm_chat_model}"
             self.fast_model = f"vllm-local/{litellm_chat_model}"
             self.embed_model = "vllm/Qwen/Qwen3-Embedding-0.6B"
             self.reranker = "vllm/BAAI/bge-reranker-v2-m3"
             self.enable_reranker = True
-            logger.info("Applied LiteLLM auto profile from env: YUXI_AUTO_USE_LITELLM=true")
+            logger.info(
+                "Applied LiteLLM profile from env "
+                f"(auto_flag={auto_flag}, has_vllm_env={has_vllm_env})"
+            )
 
         # Explicit field-level overrides (higher priority)
         if os.getenv("YUXI_DEFAULT_MODEL"):
