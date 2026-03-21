@@ -8,61 +8,109 @@ services:
       - VLLM_EMBED_BASE_URL=${VLLM_EMBED_BASE_URL:-http://litellm-gateway:8010/v1/embeddings}
       - VLLM_RERANK_BASE_URL=${VLLM_RERANK_BASE_URL:-http://litellm-gateway:8010/v1/rerank}
 
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
   crawler:
     extends:
       file: docker-compose.yaml
       service: crawler
 
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
   crawler-worker:
     extends:
       file: docker-compose.yaml
       service: crawler-worker
 
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
   app-redis:
     extends:
       file: docker-compose.yaml
       service: app-redis
 
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
   redis-exporter:
     extends:
       file: docker-compose.yaml
       service: redis-exporter
 
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
   web:
     extends:
       file: docker-compose.yaml
       service: web
 
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
   graph:
     extends:
       file: docker-compose.yaml
       service: graph
 
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
   etcd:
     extends:
       file: docker-compose.yaml
       service: etcd
 
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
   minio:
     extends:
       file: docker-compose.yaml
       service: minio
 
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
   milvus:
     extends:
       file: docker-compose.yaml
       service: milvus
 
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
   postgres:
     extends:
       file: docker-compose.yaml
       service: postgres
 
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
   postgres-exporter:
     extends:
       file: docker-compose.yaml
       service: postgres-exporter
 
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
   prometheus:
     extends:
       file: docker-compose.yaml
@@ -71,6 +119,10 @@ services:
       - ./docker/prometheus/prometheus.l20.qwen25.yml:/etc/prometheus/prometheus.yml:ro
       - ./docker/volumes/prometheus:/prometheus
 
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
   litellm-gateway:
     build:
       context: .
@@ -108,6 +160,10 @@ services:
       - app-redis
     networks:
       - app-network
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
     restart: unless-stopped
 
   vllm-qwen25-72b-awq:
@@ -144,6 +200,9 @@ services:
       - "8000:8000"
     ipc: host
     ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
       memlock: -1
       stack: 67108864
     deploy:
@@ -193,6 +252,10 @@ services:
       start_period: 120s
     networks:
       - app-network
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
     restart: unless-stopped
 
   vllm-bge-reranker-v2-m3-cpu:
@@ -225,6 +288,10 @@ services:
       start_period: 120s
     networks:
       - app-network
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
     restart: unless-stopped
 
   paddlex:
@@ -259,6 +326,10 @@ services:
       start_period: 90s
     networks:
       - app-network
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
     restart: unless-stopped
 
 networks:
