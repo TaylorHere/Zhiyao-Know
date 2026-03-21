@@ -137,6 +137,22 @@ class OpenAIReranker(BaseReranker):
         return list(result.get("results", []))
 
 
+class VLLMReranker(BaseReranker):
+    def _build_payload(self, query: str, documents: list[str], max_length: int) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "query": query,
+            "documents": documents,
+            "top_n": len(documents),
+        }
+        if max_length > 0:
+            payload["truncate_prompt_tokens"] = max_length
+        return payload
+
+    def _extract_results(self, result: dict[str, Any]) -> list[dict[str, Any]]:
+        return list(result.get("results", []))
+
+
 class DashscopeReranker(BaseReranker):
     def _build_payload(self, query: str, documents: list[str], max_length: int) -> dict[str, Any]:
         params = {"top_n": len(documents), "return_documents": False}
@@ -162,7 +178,9 @@ def get_reranker(model_id, **kwargs):
     api_key = os.getenv(model_info.api_key) or model_info.api_key
     assert api_key, f"{model_info.name} api_key is required"
     provider = model_id.split("/", maxsplit=1)[0] if "/" in model_id else ""
-    if provider in {"siliconflow", "vllm"}:
+    if provider == "vllm":
+        return VLLMReranker(model_name=model_info.name, api_key=api_key, base_url=base_url, **kwargs)
+    if provider == "siliconflow":
         return OpenAIReranker(model_name=model_info.name, api_key=api_key, base_url=base_url, **kwargs)
     if provider == "dashscope":
         return DashscopeReranker(model_name=model_info.name, api_key=api_key, base_url=base_url, **kwargs)
