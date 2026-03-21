@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import csv
+import html
 import json
 import os
 import statistics
@@ -392,6 +393,146 @@ def dump_summary_text(summary: dict[str, Any], out_txt: Path) -> None:
     out_txt.write_text("\n".join(lines), encoding="utf-8")
 
 
+def parse_iso_datetime(dt: str) -> datetime | None:
+    try:
+        return datetime.fromisoformat(dt)
+    except Exception:
+        return None
+
+
+def dump_request_race_track_svg(results: list[RequestResult], out_svg: Path) -> None:
+    rows: list[tuple[RequestResult, datetime, datetime]] = []
+    for result in sorted(results, key=lambda x: x.index):
+        start_dt = parse_iso_datetime(result.request_started_at)
+        end_dt = parse_iso_datetime(result.request_ended_at)
+        if start_dt is None or end_dt is None:
+            continue
+        if end_dt < start_dt:
+            end_dt = start_dt
+        rows.append((result, start_dt, end_dt))
+
+    if not rows:
+        out_svg.write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="120">'
+            '<text x="20" y="60" font-family="Arial,sans-serif" font-size="16">'
+            "No valid request timestamps to draw race track."
+            "</text></svg>",
+            encoding="utf-8",
+        )
+        return
+
+    min_start = min(start for _, start, _ in rows)
+    max_end = max(end for _, _, end in rows)
+    total_ms = max((max_end - min_start).total_seconds() * 1000, 1.0)
+
+    label_w = 260
+    plot_w = 1100
+    top = 72
+    row_h = 22
+    row_gap = 10
+    bottom = 70
+    right = 50
+    plot_h = len(rows) * (row_h + row_gap) - row_gap
+    width = label_w + plot_w + right
+    height = top + plot_h + bottom
+
+    parts: list[str] = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}">',
+        "<style>",
+        "text { font-family: Arial, sans-serif; fill: #1f1f1f; }",
+        ".title { font-size: 20px; font-weight: 700; }",
+        ".axis-label { font-size: 12px; fill: #666; }",
+        ".row-label { font-size: 12px; fill: #444; }",
+        ".value-label { font-size: 11px; fill: #333; }",
+        "</style>",
+        '<rect x="0" y="0" width="100%" height="100%" fill="#ffffff"/>',
+        f'<text class="title" x="{label_w}" y="34">Request Race Track</text>',
+        f'<text class="axis-label" x="{label_w}" y="54">Time span: {total_ms:.1f} ms</text>',
+    ]
+
+    # time grid
+    tick_count = 10
+    for tick in range(tick_count + 1):
+        ratio = tick / tick_count
+        x = label_w + ratio * plot_w
+        ms = total_ms * ratio
+        parts.append(f'<line x1="{x:.2f}" y1="{top-8}" x2="{x:.2f}" y2="{top + plot_h}" stroke="#f0f0f0"/>')
+        parts.append(
+            f'<text class="axis-label" x="{x:.2f}" y="{top + plot_h + 20}" text-anchor="middle">'
+            f"{ms/1000:.2f}s</text>"
+        )
+
+    # rows and bars
+    for i, (result, start_dt, end_dt) in enumerate(rows):
+        y = top + i * (row_h + row_gap)
+        start_offset_ms = max((start_dt - min_start).total_seconds() * 1000, 0.0)
+        duration_ms = max((end_dt - start_dt).total_seconds() * 1000, 0.0)
+        bar_x = label_w + (start_offset_ms / total_ms) * plot_w
+        bar_w = max((duration_ms / total_ms) * plot_w, 2.0)
+        status_color = "#52c41a" if result.ok else "#ff4d4f"
+        query_text = result.query.strip().replace("\n", " ")
+        if len(query_text) > 26:
+            query_text = query_text[:26] + "..."
+        row_label = f"#{result.index} {query_text}"
+
+        parts.append(
+            f'<text class="row-label" x="{label_w - 8}" y="{y + row_h - 6}" text-anchor="end">'
+            f"{html.escape(row_label)}</text>"
+        )
+        parts.append(
+            f'<rect x="{bar_x:.2f}" y="{y}" width="{bar_w:.2f}" height="{row_h}" '
+            f'rx="4" ry="4" fill="{status_color}" opacity="0.9"/>'
+        )
+        parts.append(
+            f'<text class="value-label" x="{bar_x + bar_w + 6:.2f}" y="{y + row_h - 6}">'
+            f"{duration_ms:.1f} ms</text>"
+        )
+
+    parts.append("</svg>")
+    out_svg.write_text("\n".join(parts), encoding="utf-8")
+
+
+def dump_markdown_report(summary: dict[str, Any], out_md: Path, race_track_svg_name: str) -> None:
+    run = summary["run"]
+    latency_total = summary["latency_total_ms"]
+    latency_ttft = summary["latency_ttft_ms"]
+
+    lines = [
+        "# HuizhouPowerQAAgent 并发压测报告",
+        "",
+        "## 运行概览",
+        "",
+        "| 指标 | 值 |",
+        "|---|---|",
+        f"| started_at | {run['started_at']} |",
+        f"| finished_at | {run['finished_at']} |",
+        f"| elapsed_sec | {run['elapsed_sec']} |",
+        f"| throughput_rps | {run['throughput_rps']} |",
+        f"| total_requests | {run['total_requests']} |",
+        f"| success_requests | {run['success_requests']} |",
+        f"| error_requests | {run['error_requests']} |",
+        f"| success_rate | {run['success_rate']}% |",
+        f"| peak_task_concurrency | {run.get('peak_task_concurrency')} |",
+        "",
+        "## 请求赛道图",
+        "",
+        f"![请求赛道图]({race_track_svg_name})",
+        "",
+        "说明：图中的横轴时间来自每个请求的 `request_started_at` 和 `request_ended_at`。",
+        "",
+        "## 延迟统计（仅成功请求）",
+        "",
+        f"- total_ms: `{json.dumps(latency_total, ensure_ascii=False)}`",
+        f"- ttft_ms: `{json.dumps(latency_ttft, ensure_ascii=False)}`",
+        "",
+        "## 其他统计",
+        "",
+        f"- status_code_counts: `{json.dumps(run['status_code_counts'], ensure_ascii=False)}`",
+        f"- error_type_counts: `{json.dumps(run['error_type_counts'], ensure_ascii=False)}`",
+    ]
+    out_md.write_text("\n".join(lines), encoding="utf-8")
+
+
 async def main_async(args: argparse.Namespace) -> int:
     csv_path = Path(args.csv).expanduser().resolve()
     if not csv_path.exists():
@@ -477,6 +618,16 @@ async def main_async(args: argparse.Namespace) -> int:
     out_json = out_dir / "report.json"
     out_csv = out_dir / "results.csv"
     out_txt = out_dir / "summary.txt"
+    out_svg = out_dir / "request_race_track.svg"
+    out_md = out_dir / "report.md"
+
+    dump_request_race_track_svg(results, out_svg)
+    dump_markdown_report(summary, out_md, out_svg.name)
+
+    report_json["artifacts"] = {
+        "request_race_track_svg": out_svg.name,
+        "report_markdown": out_md.name,
+    }
 
     out_json.write_text(json.dumps(report_json, ensure_ascii=False, indent=2), encoding="utf-8")
     dump_csv(results, out_csv)
@@ -486,6 +637,8 @@ async def main_async(args: argparse.Namespace) -> int:
     print(f"[INFO] report.json: {out_json}")
     print(f"[INFO] results.csv: {out_csv}")
     print(f"[INFO] summary.txt: {out_txt}")
+    print(f"[INFO] request_race_track.svg: {out_svg}")
+    print(f"[INFO] report.md: {out_md}")
     print(f"[INFO] success/total: {summary['run']['success_requests']}/{summary['run']['total_requests']}")
     print(f"[INFO] success_rate: {summary['run']['success_rate']}%")
     print(f"[INFO] throughput_rps: {summary['run']['throughput_rps']}")
