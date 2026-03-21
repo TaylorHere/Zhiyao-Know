@@ -46,6 +46,11 @@ services:
       nofile:
         soft: 1048576
         hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
+    shm_size: 8g
+    ipc: host
     restart: unless-stopped
     healthcheck:
       test: [ "CMD-SHELL", "curl -f http://localhost:5050/api/system/health || exit 1" ]
@@ -89,6 +94,11 @@ services:
       nofile:
         soft: 1048576
         hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
+    shm_size: 8g
+    ipc: host
     restart: unless-stopped
     depends_on:
       postgres:
@@ -122,6 +132,11 @@ services:
       nofile:
         soft: 1048576
         hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
+    shm_size: 8g
+    ipc: host
     restart: unless-stopped
     depends_on:
       app-redis:
@@ -136,6 +151,11 @@ services:
       nofile:
         soft: 1048576
         hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
+    shm_size: 8g
+    ipc: host
     restart: unless-stopped
 
   redis-exporter:
@@ -153,6 +173,11 @@ services:
       nofile:
         soft: 1048576
         hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
+    shm_size: 8g
+    ipc: host
     restart: unless-stopped
 
   prometheus:
@@ -177,6 +202,11 @@ services:
       nofile:
         soft: 1048576
         hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
+    shm_size: 8g
+    ipc: host
     restart: unless-stopped
 
   web:
@@ -199,6 +229,11 @@ services:
       nofile:
         soft: 1048576
         hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
+    shm_size: 8g
+    ipc: host
     restart: unless-stopped
 
   # region neo4j
@@ -228,6 +263,11 @@ services:
       nofile:
         soft: 1048576
         hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
+    shm_size: 8g
+    ipc: host
     restart: unless-stopped
   # endregion neo4j
 
@@ -254,6 +294,11 @@ services:
       nofile:
         soft: 1048576
         hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
+    shm_size: 8g
+    ipc: host
     restart: unless-stopped
 
   minio:
@@ -282,6 +327,11 @@ services:
       nofile:
         soft: 1048576
         hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
+    shm_size: 8g
+    ipc: host
     restart: unless-stopped
 
   milvus:
@@ -315,6 +365,11 @@ services:
       nofile:
         soft: 1048576
         hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
+    shm_size: 8g
+    ipc: host
     restart: unless-stopped
 
   postgres:
@@ -340,6 +395,11 @@ services:
       nofile:
         soft: 1048576
         hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
+    shm_size: 8g
+    ipc: host
     restart: unless-stopped
 
   postgres-exporter:
@@ -356,6 +416,11 @@ services:
       nofile:
         soft: 1048576
         hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
+    shm_size: 8g
+    ipc: host
     restart: unless-stopped
 
   # lastest version: wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
@@ -382,7 +447,9 @@ services:
       nofile:
         soft: 1048576
         hard: 1048576
-      memlock: -1
+      memlock:
+        soft: -1
+        hard: -1
       stack: 67108864
     ipc: host
     healthcheck:
@@ -396,6 +463,7 @@ services:
               capabilities: [ gpu ]
     networks:
       - app-network
+    shm_size: 8g
     restart: unless-stopped
 
   mineru-api:
@@ -418,9 +486,12 @@ services:
       nofile:
         soft: 1048576
         hard: 1048576
-      memlock: -1
+      memlock:
+        soft: -1
+        hard: -1
       stack: 67108864
     ipc: host
+    shm_size: 8g
     restart: unless-stopped
     networks:
       - app-network
@@ -457,6 +528,11 @@ services:
       nofile:
         soft: 1048576
         hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
+    shm_size: 8g
+    ipc: host
     restart: unless-stopped
 
 networks:
