@@ -57,6 +57,33 @@ def is_supported_file_extension(file_name: str | os.PathLike[str]) -> bool:
 _docling_converter: DocumentConverter | None = None
 
 
+def _read_text_with_fallback(file_path: Path, encodings: tuple[str, ...] = ("utf-8", "utf-8-sig", "gb18030")) -> str:
+    """读取文本文件，优先 UTF-8，失败后回退常见中文编码。"""
+    last_error: UnicodeDecodeError | None = None
+    for encoding in encodings:
+        try:
+            with open(file_path, encoding=encoding) as f:
+                return f.read()
+        except UnicodeDecodeError as exc:
+            last_error = exc
+    if last_error:
+        raise last_error
+    raise ValueError(f"读取文件失败: {file_path}")
+
+
+def _decode_text_with_fallback(data: bytes, encodings: tuple[str, ...] = ("utf-8", "utf-8-sig", "gb18030")) -> str:
+    """解码 bytes，优先 UTF-8，失败后回退常见中文编码。"""
+    last_error: UnicodeDecodeError | None = None
+    for encoding in encodings:
+        try:
+            return data.decode(encoding)
+        except UnicodeDecodeError as exc:
+            last_error = exc
+    if last_error:
+        raise last_error
+    raise ValueError("解码内容失败")
+
+
 def _get_docling_converter() -> DocumentConverter:
     """获取 Docling 文档转换器单例"""
     global _docling_converter
@@ -440,8 +467,7 @@ async def process_file_to_markdown(file_path: str, params: dict | None = None) -
 
         elif file_ext in [".txt", ".md"]:
             # 直接读取文本文件
-            with open(file_path_obj, encoding="utf-8") as f:
-                content = f.read()
+            content = _read_text_with_fallback(file_path_obj)
             result = f"{content}"
 
         elif file_ext in [".docx", ".pptx"]:
@@ -465,8 +491,7 @@ async def process_file_to_markdown(file_path: str, params: dict | None = None) -
             # 使用 BeautifulSoup 处理 HTML 文件
             from markdownify import markdownify as md
 
-            with open(file_path_obj, encoding="utf-8") as f:
-                content = f.read()
+            content = _read_text_with_fallback(file_path_obj)
             text = md(content, heading_style="ATX")
             result = f"{text}"
 
@@ -494,8 +519,8 @@ async def process_file_to_markdown(file_path: str, params: dict | None = None) -
             # 处理 JSON 文件
             import json
 
-            async with aiofiles.open(file_path_obj, encoding="utf-8") as f:
-                content = await f.read()
+            file_bytes = file_path_obj.read_bytes()
+            content = _decode_text_with_fallback(file_bytes)
             data = json.loads(content)
             # 将 JSON 数据格式化为 markdown 代码块
             json_str = json.dumps(data, ensure_ascii=False, indent=2)
@@ -581,7 +606,7 @@ async def _process_zip_file(zip_path: str, db_id: str) -> dict:
 
         # 读取markdown内容
         with zf.open(md_file) as f:
-            markdown_content = f.read().decode("utf-8")
+            markdown_content = _decode_text_with_fallback(f.read())
 
         # 3. 处理图片
         images_info = []
