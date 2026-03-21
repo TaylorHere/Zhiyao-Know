@@ -2,7 +2,7 @@
 set -euo pipefail
 
 URL="${LITELLM_QUERY_URL:-http://127.0.0.1:8010/queue/chat/completions}"
-MODEL="${LITELLM_MODEL:-Qwen2.5-72B-Instruct-AWQ}"
+MODEL="${LITELLM_MODEL:-Qwen3.5-35B-A3B-FP8}"
 QUERY="${LITELLM_QUERY_TEXT:-你好，请用一句话介绍你自己。}"
 API_KEY="${LITELLM_API_KEY:-no_api_key}"
 MAX_TOKENS="${LITELLM_MAX_TOKENS:-256}"
