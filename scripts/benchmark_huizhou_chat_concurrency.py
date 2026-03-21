@@ -4,7 +4,7 @@ Concurrent benchmark for HuizhouPowerQAAgent using the CSV `query` column.
 
 Features:
 1) Full fan-out by default (all requests dispatched at once)
-2) Per-request metrics (HTTP status, TTFT, total latency, stream lines, finished flag, errors)
+2) Per-request metrics (HTTP status, TTFT, total latency, stream lines, output tokens, errors)
 3) Detailed outputs: JSON (full), CSV (rows), TXT (summary)
 """
 
@@ -42,6 +42,8 @@ class RequestResult:
     ttft_ms: float | None
     stream_lines: int
     response_chars: int
+    output_tokens: int | None
+    output_tokens_per_sec: float | None
     answer_preview: str
     error_type: str | None
     error_message: str | None
@@ -84,6 +86,58 @@ def percentile(values: list[float], p: float) -> float | None:
     if f == c:
         return ordered[f]
     return ordered[f] + (ordered[c] - ordered[f]) * (k - f)
+
+
+def parse_int_token(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value >= 0 else None
+    if isinstance(value, float):
+        return int(value) if value >= 0 else None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            num = float(text)
+        except ValueError:
+            return None
+        return int(num) if num >= 0 else None
+    return None
+
+
+def extract_output_tokens_from_stream_obj(obj: dict[str, Any]) -> int | None:
+    def usage_candidates() -> list[dict[str, Any]]:
+        candidates: list[dict[str, Any]] = []
+        if isinstance(obj, dict):
+            candidates.append(obj)
+        if isinstance(obj.get("usage_metadata"), dict):
+            candidates.append(obj["usage_metadata"])
+
+        msg = obj.get("msg")
+        if isinstance(msg, dict):
+            candidates.append(msg)
+            if isinstance(msg.get("usage_metadata"), dict):
+                candidates.append(msg["usage_metadata"])
+            if isinstance(msg.get("response_metadata"), dict):
+                response_metadata = msg["response_metadata"]
+                candidates.append(response_metadata)
+                if isinstance(response_metadata.get("token_usage"), dict):
+                    candidates.append(response_metadata["token_usage"])
+                if isinstance(response_metadata.get("usage"), dict):
+                    candidates.append(response_metadata["usage"])
+        return candidates
+
+    total_fallback: int | None = None
+    for candidate in usage_candidates():
+        for key in ("output_tokens", "completion_tokens", "generated_tokens", "answer_tokens"):
+            value = parse_int_token(candidate.get(key))
+            if value is not None:
+                return value
+        if total_fallback is None:
+            total_fallback = parse_int_token(candidate.get("total_tokens"))
+    return total_fallback
 
 
 def read_queries(csv_path: Path, query_col: str, limit: int | None) -> list[str]:
@@ -180,6 +234,7 @@ async def run_one(
         http_status: int | None = None
         stream_lines = 0
         response_chars = 0
+        output_tokens: int | None = None
         finished = False
         answer_parts: list[str] = []
 
@@ -219,6 +274,10 @@ async def run_one(
                         except Exception:
                             continue
 
+                        parsed_output_tokens = extract_output_tokens_from_stream_obj(obj)
+                        if parsed_output_tokens is not None:
+                            output_tokens = max(output_tokens or 0, parsed_output_tokens)
+
                         part = obj.get("response")
                         if isinstance(part, str) and part:
                             response_chars += len(part)
@@ -236,6 +295,9 @@ async def run_one(
                     stream_lines += 1
                     try:
                         obj = json.loads(tail)
+                        parsed_output_tokens = extract_output_tokens_from_stream_obj(obj)
+                        if parsed_output_tokens is not None:
+                            output_tokens = max(output_tokens or 0, parsed_output_tokens)
                         part = obj.get("response")
                         if isinstance(part, str) and part:
                             response_chars += len(part)
@@ -251,6 +313,7 @@ async def run_one(
             t1 = time.perf_counter()
             total_ms = (t1 - t0) * 1000
             ttft_ms = (first_chunk_ts - t0) * 1000 if first_chunk_ts else None
+            output_tokens_per_sec = (output_tokens / (total_ms / 1000)) if output_tokens is not None and total_ms > 0 else None
             answer_preview = "".join(answer_parts).replace("\n", " ").strip()
             ok = http_status == 200 and finished
 
@@ -266,6 +329,8 @@ async def run_one(
                 ttft_ms=None if ttft_ms is None else round(ttft_ms, 3),
                 stream_lines=stream_lines,
                 response_chars=response_chars,
+                output_tokens=output_tokens,
+                output_tokens_per_sec=None if output_tokens_per_sec is None else round(output_tokens_per_sec, 3),
                 answer_preview=answer_preview,
                 error_type=None,
                 error_message=None,
@@ -283,6 +348,12 @@ async def run_one(
                 ttft_ms=None if first_chunk_ts is None else round((first_chunk_ts - t0) * 1000, 3),
                 stream_lines=stream_lines,
                 response_chars=response_chars,
+                output_tokens=output_tokens,
+                output_tokens_per_sec=(
+                    None
+                    if output_tokens is None
+                    else round(output_tokens / max((time.perf_counter() - t0), 1e-9), 3)
+                ),
                 answer_preview="",
                 error_type=type(e).__name__,
                 error_message=str(e),
@@ -300,6 +371,12 @@ async def run_one(
                 ttft_ms=None if first_chunk_ts is None else round((first_chunk_ts - t0) * 1000, 3),
                 stream_lines=stream_lines,
                 response_chars=response_chars,
+                output_tokens=output_tokens,
+                output_tokens_per_sec=(
+                    None
+                    if output_tokens is None
+                    else round(output_tokens / max((time.perf_counter() - t0), 1e-9), 3)
+                ),
                 answer_preview="",
                 error_type=type(e).__name__,
                 error_message=str(e),
@@ -313,6 +390,7 @@ def build_summary(results: list[RequestResult], started_at: str, finished_at: st
 
     total_ms_ok = [r.total_ms for r in ok_results]
     ttft_ms_ok = [r.ttft_ms for r in ok_results if r.ttft_ms is not None]
+    output_tokens_ok = [r.output_tokens for r in ok_results if r.output_tokens is not None]
 
     status_counts = Counter(str(r.http_status) if r.http_status is not None else "None" for r in results)
     err_counts = Counter(r.error_type or "" for r in fail_results if r.error_type)
@@ -323,6 +401,10 @@ def build_summary(results: list[RequestResult], started_at: str, finished_at: st
             "finished_at": finished_at,
             "elapsed_sec": round(elapsed_sec, 3),
             "throughput_rps": round(total / elapsed_sec, 3) if elapsed_sec > 0 else None,
+            "output_tokens_total": sum(output_tokens_ok) if output_tokens_ok else None,
+            "throughput_tokens_per_sec": round(sum(output_tokens_ok) / elapsed_sec, 3)
+            if elapsed_sec > 0 and output_tokens_ok
+            else None,
             "total_requests": total,
             "success_requests": len(ok_results),
             "error_requests": len(fail_results),
@@ -376,6 +458,8 @@ def dump_summary_text(summary: dict[str, Any], out_txt: Path) -> None:
         f"finished_at: {run['finished_at']}",
         f"elapsed_sec: {run['elapsed_sec']}",
         f"throughput_rps: {run['throughput_rps']}",
+        f"output_tokens_total: {run.get('output_tokens_total')}",
+        f"throughput_tokens_per_sec: {run.get('throughput_tokens_per_sec')}",
         f"total_requests: {run['total_requests']}",
         f"success_requests: {run['success_requests']}",
         f"error_requests: {run['error_requests']}",
@@ -508,6 +592,8 @@ def dump_markdown_report(summary: dict[str, Any], out_md: Path, race_track_svg_n
         f"| finished_at | {run['finished_at']} |",
         f"| elapsed_sec | {run['elapsed_sec']} |",
         f"| throughput_rps | {run['throughput_rps']} |",
+        f"| output_tokens_total | {run.get('output_tokens_total')} |",
+        f"| throughput_tokens_per_sec | {run.get('throughput_tokens_per_sec')} |",
         f"| total_requests | {run['total_requests']} |",
         f"| success_requests | {run['success_requests']} |",
         f"| error_requests | {run['error_requests']} |",
@@ -642,6 +728,7 @@ async def main_async(args: argparse.Namespace) -> int:
     print(f"[INFO] success/total: {summary['run']['success_requests']}/{summary['run']['total_requests']}")
     print(f"[INFO] success_rate: {summary['run']['success_rate']}%")
     print(f"[INFO] throughput_rps: {summary['run']['throughput_rps']}")
+    print(f"[INFO] throughput_tokens_per_sec: {summary['run'].get('throughput_tokens_per_sec')}")
     print(f"[INFO] peak_task_concurrency: {summary['run']['peak_task_concurrency']}")
     print("[INFO] summary:")
     print(json.dumps(summary, ensure_ascii=False, indent=2))
