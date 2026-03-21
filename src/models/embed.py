@@ -23,6 +23,7 @@ class BaseEmbeddingModel(ABC):
         """
         base_url = base_url or url
         self.model = model or name
+        self.model_id = model_id
         self.dimension = dimension
         self.base_url = get_docker_safe_url(base_url)
         self.api_key = os.getenv(api_key, api_key)
@@ -157,7 +158,11 @@ class OtherEmbedding(BaseEmbeddingModel):
         self.headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
 
     def build_payload(self, message: list[str] | str) -> dict:
-        return {"model": self.model, "input": message}
+        payload = {"model": self.model, "input": message}
+        if isinstance(self.model_id, str) and self.model_id.startswith("vllm/"):
+            # vLLM (through LiteLLM proxy) requires a non-null encoding_format.
+            payload["encoding_format"] = "float"
+        return payload
 
     def encode(self, message: list[str] | str) -> list[list[float]]:
         payload = self.build_payload(message)
