@@ -30,8 +30,8 @@ if [ "$1" = "Qwen3-Embedding-0.6B" ]; then
         --served-model-name "$1" --host 0.0.0.0 --port $PORT
 fi
 
-if [ "$1" = "Qwen3-Reranker-0.6B" ]; then
-    vllm serve "$MODEL_DIR/Qwen/Qwen3-Reranker-0.6B" --task rerank \
+if [ "$1" = "bge-reranker-v2-m3" ]; then
+    vllm serve "$MODEL_DIR/BAAI/bge-reranker-v2-m3" --task rerank \
         --trust-remote-code \
         --device cuda --dtype auto --tensor-parallel-size $TENSOR_PARALLEL_SIZE \
         --max_model_len 4096 \

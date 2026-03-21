@@ -254,8 +254,8 @@ DEFAULT_RERANKERS: dict[str, RerankerInfo] = {
         base_url="https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank",
         api_key="DASHSCOPE_API_KEY",
     ),
-    "dashscope/qwen3-rerank": RerankerInfo(
-        name="qwen3-rerank",
+    "dashscope/bge-reranker-v2-m3": RerankerInfo(
+        name="bge-reranker-v2-m3",
         base_url="https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank",
         api_key="DASHSCOPE_API_KEY",
     ),

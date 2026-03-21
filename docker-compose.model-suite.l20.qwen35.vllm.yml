@@ -85,9 +85,9 @@ services:
       - app-network
     restart: unless-stopped
 
-  vllm-qwen3-rerank-cpu:
+  vllm-bge-reranker-v2-m3-cpu:
     image: ${VLLM_OPENAI_CPU_IMAGE:-docker.m.daocloud.io/vllm/vllm-openai-cpu:latest}
-    container_name: vllm-qwen3-rerank-cpu
+    container_name: vllm-bge-reranker-v2-m3-cpu
     command:
       - --model
       - /models/BAAI/bge-reranker-v2-m3
@@ -145,7 +145,7 @@ services:
     depends_on:
       - vllm-qwen35-35b-a3b-fp8
       - vllm-qwen3-embedding-cpu
-      - vllm-qwen3-rerank-cpu
+      - vllm-bge-reranker-v2-m3-cpu
     networks:
       - app-network
     restart: unless-stopped
