@@ -27,6 +27,25 @@ def _get_message_content(msg: Any) -> str | None:
     return str(content) if content is not None else None
 
 
+def _safe_preview(text: str | None, limit: int = 300) -> str:
+    if not text:
+        return ""
+    text = text.replace("\n", " ").replace("\r", " ").strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "...<truncated>"
+
+
+def _message_snapshot(msg: Any) -> dict[str, Any]:
+    if isinstance(msg, dict):
+        role = msg.get("role") or msg.get("type")
+        content = _safe_preview(str(msg.get("content", "")))
+        return {"role": role, "content_preview": content}
+    role = getattr(msg, "type", None) or getattr(msg, "role", None) or msg.__class__.__name__
+    content = _safe_preview(_get_message_content(msg))
+    return {"role": role, "content_preview": content}
+
+
 class RuntimeConfigMiddleware(AgentMiddleware):
     """运行时配置中间件 - 应用模型/工具/知识库/MCP/提示词配置
 
@@ -83,7 +102,36 @@ class RuntimeConfigMiddleware(AgentMiddleware):
         messages = [*new_systems, *existing_systems, *remaining]
 
         request = request.override(model=model, tools=enabled_tools, messages=messages)
-        return await handler(request)
+
+        # Build debug snapshot once, and emit it only when model call fails.
+        model_name = getattr(model, "model_name", None) or getattr(model, "model", None)
+        model_identifier = getattr(model, "model_identifier", None)
+        model_base_url = (
+            getattr(model, "openai_api_base", None)
+            or getattr(model, "base_url", None)
+            or getattr(model, "api_base", None)
+        )
+        model_kwargs = getattr(model, "model_kwargs", None) or {}
+        debug_snapshot = {
+            "runtime_model_spec": getattr(runtime_context, "model", None),
+            "resolved_model_name": model_name,
+            "resolved_model_identifier": model_identifier,
+            "resolved_model_base_url": model_base_url,
+            "resolved_model_kwargs": model_kwargs,
+            "tool_names": [t.name for t in enabled_tools],
+            "tool_count": len(enabled_tools),
+            "message_count": len(messages),
+            "messages_preview": [_message_snapshot(m) for m in messages[:6]],
+        }
+
+        try:
+            return await handler(request)
+        except Exception as e:
+            logger.error(
+                f"RuntimeConfigMiddleware model call failed: {type(e).__name__}: {e}\n"
+                f"Request snapshot: {debug_snapshot}"
+            )
+            raise
 
     async def get_tools_from_context(self, context) -> list:
         """从上下文配置中获取工具列表"""
