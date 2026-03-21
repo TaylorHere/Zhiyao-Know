@@ -593,7 +593,244 @@ def dump_request_race_track_svg(results: list[RequestResult], out_svg: Path) -> 
     out_svg.write_text("\n".join(parts), encoding="utf-8")
 
 
-def dump_markdown_report(summary: dict[str, Any], out_md: Path, race_track_svg_name: str) -> None:
+async def run_benchmark_round(
+    *,
+    session: aiohttp.ClientSession,
+    args: argparse.Namespace,
+    queries: list[str],
+    token: str,
+    concurrency_limit: int,
+) -> tuple[list[RequestResult], dict[str, Any]]:
+    started_at = now_iso()
+    t0 = time.perf_counter()
+
+    bounded_concurrency = max(1, min(concurrency_limit, len(queries)))
+    semaphore = asyncio.Semaphore(bounded_concurrency)
+    concurrency_tracker = TaskConcurrencyTracker()
+
+    async def run_one_with_tracking(query: str, idx: int) -> RequestResult:
+        async with semaphore:
+            await concurrency_tracker.enter()
+            try:
+                return await run_one(
+                    session=session,
+                    api_base=args.api_base,
+                    agent_id=args.agent_id,
+                    agent_config_id=args.agent_config_id,
+                    query=query,
+                    idx=idx,
+                    token=token,
+                    timeout_sec=args.request_timeout_sec,
+                    save_full_answer=args.save_full_answer,
+                )
+            finally:
+                await concurrency_tracker.exit()
+
+    tasks = [asyncio.create_task(run_one_with_tracking(query=q, idx=i)) for i, q in enumerate(queries, 1)]
+    results = await asyncio.gather(*tasks)
+
+    elapsed_sec = time.perf_counter() - t0
+    finished_at = now_iso()
+    summary = build_summary(results, started_at, finished_at, elapsed_sec)
+    summary["run"]["peak_task_concurrency"] = concurrency_tracker.peak
+    summary["run"]["target_concurrency"] = bounded_concurrency
+    return results, summary
+
+
+def build_sweep_concurrency_values(max_concurrency: int, step: int) -> list[int]:
+    upper = max(1, max_concurrency)
+    stride = max(1, step)
+    values = list(range(1, upper + 1, stride))
+    if values[-1] != upper:
+        values.append(upper)
+    return values
+
+
+def build_sweep_row(summary: dict[str, Any]) -> dict[str, Any]:
+    run = summary["run"]
+    latency_total = summary["latency_total_ms"]
+    latency_ttft = summary["latency_ttft_ms"]
+    return {
+        "concurrency": run.get("target_concurrency"),
+        "success_rate": run.get("success_rate"),
+        "throughput_rps": run.get("throughput_rps"),
+        "throughput_tokens_per_sec": run.get("throughput_tokens_per_sec"),
+        "latency_avg_ms": latency_total.get("avg"),
+        "latency_p95_ms": latency_total.get("p95"),
+        "latency_p99_ms": latency_total.get("p99"),
+        "ttft_avg_ms": latency_ttft.get("avg"),
+    }
+
+
+def pick_best_latency_point(sweep_rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+    candidates = [row for row in sweep_rows if row.get("latency_p95_ms") is not None]
+    if not candidates:
+        return None
+    candidates.sort(
+        key=lambda row: (
+            float(row["latency_p95_ms"]),
+            float(row["latency_avg_ms"]) if row.get("latency_avg_ms") is not None else float("inf"),
+            -float(row["throughput_rps"]) if row.get("throughput_rps") is not None else float("inf"),
+            int(row["concurrency"] or 0),
+        )
+    )
+    return candidates[0]
+
+
+def dump_concurrency_sweep_csv(sweep_rows: list[dict[str, Any]], out_csv: Path) -> None:
+    if not sweep_rows:
+        out_csv.write_text("", encoding="utf-8")
+        return
+    fields = list(sweep_rows[0].keys())
+    with out_csv.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fields)
+        writer.writeheader()
+        for row in sweep_rows:
+            writer.writerow(row)
+
+
+def dump_concurrency_latency_curve_svg(
+    sweep_rows: list[dict[str, Any]],
+    out_svg: Path,
+    best_point: dict[str, Any] | None,
+) -> None:
+    rows = [row for row in sweep_rows if isinstance(row.get("concurrency"), int)]
+    if not rows:
+        out_svg.write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="900" height="140">'
+            '<text x="20" y="70" font-family="Arial,sans-serif" font-size="16">'
+            "No sweep data to draw concurrency-latency curve."
+            "</text></svg>",
+            encoding="utf-8",
+        )
+        return
+
+    metrics = [
+        ("latency_avg_ms", "avg", "#1677ff"),
+        ("latency_p95_ms", "p95", "#fa8c16"),
+        ("latency_p99_ms", "p99", "#f5222d"),
+    ]
+    metric_points: dict[str, list[tuple[int, float]]] = {}
+    all_latency_values: list[float] = []
+    for key, _, _ in metrics:
+        pts: list[tuple[int, float]] = []
+        for row in rows:
+            value = row.get(key)
+            if value is None:
+                continue
+            pts.append((int(row["concurrency"]), float(value)))
+            all_latency_values.append(float(value))
+        metric_points[key] = pts
+
+    if not all_latency_values:
+        out_svg.write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="900" height="140">'
+            '<text x="20" y="70" font-family="Arial,sans-serif" font-size="16">'
+            "Sweep completed but no latency values available."
+            "</text></svg>",
+            encoding="utf-8",
+        )
+        return
+
+    min_concurrency = min(int(row["concurrency"]) for row in rows)
+    max_concurrency = max(int(row["concurrency"]) for row in rows)
+    max_latency = max(max(all_latency_values), 1.0)
+
+    left = 80
+    right = 40
+    top = 80
+    bottom = 80
+    plot_w = 980
+    plot_h = 430
+    width = left + plot_w + right
+    height = top + plot_h + bottom
+
+    def x_for(concurrency: int) -> float:
+        if max_concurrency == min_concurrency:
+            return left + plot_w / 2
+        return left + (concurrency - min_concurrency) / (max_concurrency - min_concurrency) * plot_w
+
+    def y_for(latency_ms: float) -> float:
+        return top + (1 - latency_ms / max_latency) * plot_h
+
+    parts: list[str] = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}">',
+        "<style>",
+        "text { font-family: Arial, sans-serif; fill: #222; }",
+        ".title { font-size: 22px; font-weight: 700; }",
+        ".sub { font-size: 13px; fill: #666; }",
+        ".axis { font-size: 12px; fill: #666; }",
+        ".legend { font-size: 12px; }",
+        "</style>",
+        '<rect x="0" y="0" width="100%" height="100%" fill="#fff"/>',
+        f'<text class="title" x="{left}" y="36">Concurrency vs Latency</text>',
+        f'<text class="sub" x="{left}" y="58">Latency unit: ms, lower is better</text>',
+    ]
+
+    y_ticks = 6
+    for i in range(y_ticks + 1):
+        ratio = i / y_ticks
+        value = max_latency * (1 - ratio)
+        y = top + ratio * plot_h
+        parts.append(f'<line x1="{left}" y1="{y:.2f}" x2="{left + plot_w}" y2="{y:.2f}" stroke="#f0f0f0"/>')
+        parts.append(
+            f'<text class="axis" x="{left - 8}" y="{y + 4:.2f}" text-anchor="end">{value:.1f}</text>'
+        )
+
+    for row in rows:
+        c = int(row["concurrency"])
+        x = x_for(c)
+        parts.append(f'<line x1="{x:.2f}" y1="{top}" x2="{x:.2f}" y2="{top + plot_h}" stroke="#fafafa"/>')
+        parts.append(
+            f'<text class="axis" x="{x:.2f}" y="{top + plot_h + 22}" text-anchor="middle">{c}</text>'
+        )
+
+    parts.append(
+        f'<text class="axis" x="{left + plot_w / 2:.2f}" y="{height - 24}" text-anchor="middle">concurrency</text>'
+    )
+    parts.append(
+        f'<text class="axis" transform="translate(24,{top + plot_h / 2:.2f}) rotate(-90)" text-anchor="middle">latency (ms)</text>'
+    )
+
+    legend_x = left
+    for key, label, color in metrics:
+        parts.append(f'<rect x="{legend_x}" y="66" width="16" height="4" fill="{color}" rx="2" ry="2"/>')
+        parts.append(f'<text class="legend" x="{legend_x + 22}" y="72">{label}</text>')
+        legend_x += 90
+
+    for key, _, color in metrics:
+        pts = metric_points[key]
+        if not pts:
+            continue
+        point_str = " ".join(f"{x_for(c):.2f},{y_for(v):.2f}" for c, v in pts)
+        parts.append(f'<polyline fill="none" stroke="{color}" stroke-width="2.4" points="{point_str}"/>')
+        for c, v in pts:
+            parts.append(
+                f'<circle cx="{x_for(c):.2f}" cy="{y_for(v):.2f}" r="3.2" fill="#fff" stroke="{color}" stroke-width="1.8"/>'
+            )
+
+    if best_point and best_point.get("concurrency") is not None and best_point.get("latency_p95_ms") is not None:
+        best_c = int(best_point["concurrency"])
+        best_p95 = float(best_point["latency_p95_ms"])
+        bx = x_for(best_c)
+        by = y_for(best_p95)
+        parts.append(f'<circle cx="{bx:.2f}" cy="{by:.2f}" r="6" fill="none" stroke="#13c2c2" stroke-width="2.2"/>')
+        parts.append(
+            f'<text class="sub" x="{bx + 10:.2f}" y="{by - 10:.2f}">best p95: c={best_c}, {best_p95:.1f}ms</text>'
+        )
+
+    parts.append("</svg>")
+    out_svg.write_text("\n".join(parts), encoding="utf-8")
+
+
+def dump_markdown_report(
+    summary: dict[str, Any],
+    out_md: Path,
+    race_track_svg_name: str,
+    sweep_rows: list[dict[str, Any]] | None = None,
+    sweep_curve_svg_name: str | None = None,
+    sweep_best_point: dict[str, Any] | None = None,
+) -> None:
     run = summary["run"]
     latency_total = summary["latency_total_ms"]
     latency_ttft = summary["latency_ttft_ms"]
@@ -633,6 +870,35 @@ def dump_markdown_report(summary: dict[str, Any], out_md: Path, race_track_svg_n
         f"- status_code_counts: `{json.dumps(run['status_code_counts'], ensure_ascii=False)}`",
         f"- error_type_counts: `{json.dumps(run['error_type_counts'], ensure_ascii=False)}`",
     ]
+
+    if sweep_rows:
+        lines.extend(
+            [
+                "",
+                "## 并发 vs 延迟曲线（阶梯压测）",
+                "",
+                f"![并发-延迟曲线]({sweep_curve_svg_name})" if sweep_curve_svg_name else "",
+                "",
+            ]
+        )
+        if sweep_best_point:
+            lines.append(
+                f"- 最优 p95 点: concurrency={sweep_best_point.get('concurrency')}, "
+                f"p95={sweep_best_point.get('latency_p95_ms')}ms"
+            )
+            lines.append("")
+        lines.extend(
+            [
+                "| concurrency | avg_ms | p95_ms | p99_ms | ttft_avg_ms | throughput_rps | token/s | success_rate |",
+                "|---|---:|---:|---:|---:|---:|---:|---:|",
+            ]
+        )
+        for row in sweep_rows:
+            lines.append(
+                f"| {row.get('concurrency')} | {row.get('latency_avg_ms')} | {row.get('latency_p95_ms')} | "
+                f"{row.get('latency_p99_ms')} | {row.get('ttft_avg_ms')} | {row.get('throughput_rps')} | "
+                f"{row.get('throughput_tokens_per_sec')} | {row.get('success_rate')}% |"
+            )
     out_md.write_text("\n".join(lines), encoding="utf-8")
 
 
@@ -651,9 +917,6 @@ async def main_async(args: argparse.Namespace) -> int:
     out_dir = Path(args.output_dir).expanduser().resolve() / run_id
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    started_at = now_iso()
-    t0 = time.perf_counter()
-
     timeout = aiohttp.ClientTimeout(total=args.request_timeout_sec)
     headers = {
         "Authorization": f"Bearer {token}",
@@ -663,38 +926,44 @@ async def main_async(args: argparse.Namespace) -> int:
     print(f"[INFO] Run ID: {run_id}")
     print(f"[INFO] Queries: {len(queries)}")
     print("[INFO] Dispatch mode: all_at_once (full concurrency)")
-
-    concurrency_tracker = TaskConcurrencyTracker()
     async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
-        async def run_one_with_tracking(query: str, idx: int) -> RequestResult:
-            await concurrency_tracker.enter()
-            try:
-                return await run_one(
+        results, summary = await run_benchmark_round(
+            session=session,
+            args=args,
+            queries=queries,
+            token=token,
+            concurrency_limit=len(queries),
+        )
+
+        sweep_rows: list[dict[str, Any]] = []
+        sweep_best_point: dict[str, Any] | None = None
+        if args.sweep_concurrency:
+            requested_sweep_max = args.sweep_max_concurrency if args.sweep_max_concurrency is not None else len(queries)
+            sweep_max_concurrency = max(1, min(len(queries), requested_sweep_max))
+            sweep_values = build_sweep_concurrency_values(sweep_max_concurrency, args.sweep_step)
+            print(
+                f"[INFO] Sweep mode enabled: concurrency from {sweep_values[0]} to {sweep_values[-1]}, "
+                f"step={max(args.sweep_step, 1)}, rounds={len(sweep_values)}"
+            )
+            for concurrency in sweep_values:
+                print(f"[INFO] Sweep round start: concurrency={concurrency}")
+                _, sweep_summary = await run_benchmark_round(
                     session=session,
-                    api_base=args.api_base,
-                    agent_id=args.agent_id,
-                    agent_config_id=args.agent_config_id,
-                    query=query,
-                    idx=idx,
+                    args=args,
+                    queries=queries,
                     token=token,
-                    timeout_sec=args.request_timeout_sec,
-                    save_full_answer=args.save_full_answer,
+                    concurrency_limit=concurrency,
                 )
-            finally:
-                await concurrency_tracker.exit()
-
-        tasks = [
-            asyncio.create_task(run_one_with_tracking(query=q, idx=i))
-            for i, q in enumerate(queries, 1)
-        ]
-        results = await asyncio.gather(*tasks)
-
-    peak_task_concurrency = concurrency_tracker.peak
-    elapsed_sec = time.perf_counter() - t0
-    finished_at = now_iso()
-
-    summary = build_summary(results, started_at, finished_at, elapsed_sec)
-    summary["run"]["peak_task_concurrency"] = peak_task_concurrency
+                row = build_sweep_row(sweep_summary)
+                sweep_rows.append(row)
+                print(
+                    f"[INFO] Sweep round done: concurrency={concurrency}, "
+                    f"p95={row.get('latency_p95_ms')}ms, throughput_rps={row.get('throughput_rps')}"
+                )
+            sweep_best_point = pick_best_latency_point(sweep_rows)
+        else:
+            sweep_max_concurrency = None
+            sweep_values = []
 
     run_params = {
         "run_id": run_id,
@@ -709,7 +978,10 @@ async def main_async(args: argparse.Namespace) -> int:
         "auth_mode": auth_mode,
         "save_full_answer": args.save_full_answer,
         "limit": args.limit,
-        "peak_task_concurrency": peak_task_concurrency,
+        "peak_task_concurrency": summary["run"]["peak_task_concurrency"],
+        "sweep_concurrency": args.sweep_concurrency,
+        "sweep_max_concurrency": sweep_max_concurrency,
+        "sweep_step": max(args.sweep_step, 1),
     }
 
     report_json = {
@@ -717,20 +989,41 @@ async def main_async(args: argparse.Namespace) -> int:
         "summary": summary,
         "results": [asdict(r) for r in results],
     }
+    if args.sweep_concurrency:
+        report_json["sweep"] = {
+            "concurrency_values": sweep_values,
+            "rows": sweep_rows,
+            "best_point": sweep_best_point,
+        }
 
     out_json = out_dir / "report.json"
     out_csv = out_dir / "results.csv"
     out_txt = out_dir / "summary.txt"
     out_svg = out_dir / "request_race_track.svg"
+    out_sweep_csv = out_dir / "concurrency_sweep.csv"
+    out_sweep_svg = out_dir / "concurrency_latency_curve.svg"
     out_md = out_dir / "report.md"
 
     dump_request_race_track_svg(results, out_svg)
-    dump_markdown_report(summary, out_md, out_svg.name)
+    if args.sweep_concurrency:
+        dump_concurrency_sweep_csv(sweep_rows, out_sweep_csv)
+        dump_concurrency_latency_curve_svg(sweep_rows, out_sweep_svg, sweep_best_point)
+    dump_markdown_report(
+        summary,
+        out_md,
+        out_svg.name,
+        sweep_rows=sweep_rows if args.sweep_concurrency else None,
+        sweep_curve_svg_name=out_sweep_svg.name if args.sweep_concurrency else None,
+        sweep_best_point=sweep_best_point if args.sweep_concurrency else None,
+    )
 
     report_json["artifacts"] = {
         "request_race_track_svg": out_svg.name,
         "report_markdown": out_md.name,
     }
+    if args.sweep_concurrency:
+        report_json["artifacts"]["concurrency_sweep_csv"] = out_sweep_csv.name
+        report_json["artifacts"]["concurrency_latency_curve_svg"] = out_sweep_svg.name
 
     out_json.write_text(json.dumps(report_json, ensure_ascii=False, indent=2), encoding="utf-8")
     dump_csv(results, out_csv)
@@ -741,6 +1034,9 @@ async def main_async(args: argparse.Namespace) -> int:
     print(f"[INFO] results.csv: {out_csv}")
     print(f"[INFO] summary.txt: {out_txt}")
     print(f"[INFO] request_race_track.svg: {out_svg}")
+    if args.sweep_concurrency:
+        print(f"[INFO] concurrency_sweep.csv: {out_sweep_csv}")
+        print(f"[INFO] concurrency_latency_curve.svg: {out_sweep_svg}")
     print(f"[INFO] report.md: {out_md}")
     print(f"[INFO] success/total: {summary['run']['success_requests']}/{summary['run']['total_requests']}")
     print(f"[INFO] success_rate: {summary['run']['success_rate']}%")
@@ -771,6 +1067,23 @@ def parse_args() -> argparse.Namespace:
         help="Output directory (run_id subfolder will be created)",
     )
     parser.add_argument("--limit", type=int, default=None, help="Use first N queries only (default: all)")
+    parser.add_argument(
+        "--sweep-concurrency",
+        action="store_true",
+        help="Run step-wise concurrency sweep (1..N) and generate concurrency-latency curve",
+    )
+    parser.add_argument(
+        "--sweep-max-concurrency",
+        type=int,
+        default=None,
+        help="Maximum concurrency for sweep (default: query count)",
+    )
+    parser.add_argument(
+        "--sweep-step",
+        type=int,
+        default=1,
+        help="Sweep step size between consecutive concurrency levels",
+    )
 
     parser.add_argument("--token", default=None, help="Provide Bearer token directly")
     parser.add_argument("--username", default=None, help="Username for login token (optional)")
