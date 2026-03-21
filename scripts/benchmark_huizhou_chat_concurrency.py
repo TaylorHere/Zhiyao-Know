@@ -313,7 +313,12 @@ async def run_one(
             t1 = time.perf_counter()
             total_ms = (t1 - t0) * 1000
             ttft_ms = (first_chunk_ts - t0) * 1000 if first_chunk_ts else None
-            output_tokens_per_sec = (output_tokens / (total_ms / 1000)) if output_tokens is not None and total_ms > 0 else None
+            effective_output_tokens = output_tokens if output_tokens is not None else (response_chars or None)
+            output_tokens_per_sec = (
+                (effective_output_tokens / (total_ms / 1000))
+                if effective_output_tokens is not None and total_ms > 0
+                else None
+            )
             answer_preview = "".join(answer_parts).replace("\n", " ").strip()
             ok = http_status == 200 and finished
 
@@ -329,13 +334,14 @@ async def run_one(
                 ttft_ms=None if ttft_ms is None else round(ttft_ms, 3),
                 stream_lines=stream_lines,
                 response_chars=response_chars,
-                output_tokens=output_tokens,
+                output_tokens=effective_output_tokens,
                 output_tokens_per_sec=None if output_tokens_per_sec is None else round(output_tokens_per_sec, 3),
                 answer_preview=answer_preview,
                 error_type=None,
                 error_message=None,
             )
         except asyncio.TimeoutError as e:
+            effective_output_tokens = output_tokens if output_tokens is not None else (response_chars or None)
             return RequestResult(
                 index=idx,
                 query=query,
@@ -348,17 +354,18 @@ async def run_one(
                 ttft_ms=None if first_chunk_ts is None else round((first_chunk_ts - t0) * 1000, 3),
                 stream_lines=stream_lines,
                 response_chars=response_chars,
-                output_tokens=output_tokens,
+                output_tokens=effective_output_tokens,
                 output_tokens_per_sec=(
                     None
-                    if output_tokens is None
-                    else round(output_tokens / max((time.perf_counter() - t0), 1e-9), 3)
+                    if effective_output_tokens is None
+                    else round(effective_output_tokens / max((time.perf_counter() - t0), 1e-9), 3)
                 ),
                 answer_preview="",
                 error_type=type(e).__name__,
                 error_message=str(e),
             )
         except Exception as e:
+            effective_output_tokens = output_tokens if output_tokens is not None else (response_chars or None)
             return RequestResult(
                 index=idx,
                 query=query,
@@ -371,11 +378,11 @@ async def run_one(
                 ttft_ms=None if first_chunk_ts is None else round((first_chunk_ts - t0) * 1000, 3),
                 stream_lines=stream_lines,
                 response_chars=response_chars,
-                output_tokens=output_tokens,
+                output_tokens=effective_output_tokens,
                 output_tokens_per_sec=(
                     None
-                    if output_tokens is None
-                    else round(output_tokens / max((time.perf_counter() - t0), 1e-9), 3)
+                    if effective_output_tokens is None
+                    else round(effective_output_tokens / max((time.perf_counter() - t0), 1e-9), 3)
                 ),
                 answer_preview="",
                 error_type=type(e).__name__,
