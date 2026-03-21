@@ -925,19 +925,11 @@ async def main_async(args: argparse.Namespace) -> int:
 
     print(f"[INFO] Run ID: {run_id}")
     print(f"[INFO] Queries: {len(queries)}")
-    print("[INFO] Dispatch mode: all_at_once (full concurrency)")
     async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
-        results, summary = await run_benchmark_round(
-            session=session,
-            args=args,
-            queries=queries,
-            token=token,
-            concurrency_limit=len(queries),
-        )
-
         sweep_rows: list[dict[str, Any]] = []
         sweep_best_point: dict[str, Any] | None = None
         if args.sweep_concurrency:
+            print("[INFO] Dispatch mode: sweep_only")
             requested_sweep_max = args.sweep_max_concurrency if args.sweep_max_concurrency is not None else len(queries)
             sweep_max_concurrency = max(1, min(len(queries), requested_sweep_max))
             sweep_values = build_sweep_concurrency_values(sweep_max_concurrency, args.sweep_step)
@@ -945,9 +937,11 @@ async def main_async(args: argparse.Namespace) -> int:
                 f"[INFO] Sweep mode enabled: concurrency from {sweep_values[0]} to {sweep_values[-1]}, "
                 f"step={max(args.sweep_step, 1)}, rounds={len(sweep_values)}"
             )
+            results: list[RequestResult] = []
+            summary: dict[str, Any] | None = None
             for concurrency in sweep_values:
                 print(f"[INFO] Sweep round start: concurrency={concurrency}")
-                _, sweep_summary = await run_benchmark_round(
+                sweep_results, sweep_summary = await run_benchmark_round(
                     session=session,
                     args=args,
                     queries=queries,
@@ -956,12 +950,24 @@ async def main_async(args: argparse.Namespace) -> int:
                 )
                 row = build_sweep_row(sweep_summary)
                 sweep_rows.append(row)
+                results = sweep_results
+                summary = sweep_summary
                 print(
                     f"[INFO] Sweep round done: concurrency={concurrency}, "
                     f"p95={row.get('latency_p95_ms')}ms, throughput_rps={row.get('throughput_rps')}"
                 )
+            if summary is None:
+                raise RuntimeError("Sweep mode produced no summary")
             sweep_best_point = pick_best_latency_point(sweep_rows)
         else:
+            print("[INFO] Dispatch mode: all_at_once (full concurrency)")
+            results, summary = await run_benchmark_round(
+                session=session,
+                args=args,
+                queries=queries,
+                token=token,
+                concurrency_limit=len(queries),
+            )
             sweep_max_concurrency = None
             sweep_values = []
 
@@ -973,7 +979,7 @@ async def main_async(args: argparse.Namespace) -> int:
         "csv": str(csv_path),
         "query_col": args.query_col,
         "query_count": len(queries),
-        "dispatch_mode": "all_at_once",
+        "dispatch_mode": "sweep_only" if args.sweep_concurrency else "all_at_once",
         "request_timeout_sec": args.request_timeout_sec,
         "auth_mode": auth_mode,
         "save_full_answer": args.save_full_answer,
@@ -1069,7 +1075,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit", type=int, default=None, help="Use first N queries only (default: all)")
     parser.add_argument(
         "--sweep-concurrency",
+        "--swep",
         action="store_true",
+        dest="sweep_concurrency",
         help="Run step-wise concurrency sweep (1..N) and generate concurrency-latency curve",
     )
     parser.add_argument(
