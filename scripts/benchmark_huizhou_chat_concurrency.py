@@ -46,6 +46,27 @@ class RequestResult:
     error_message: str | None
 
 
+class TaskConcurrencyTracker:
+    def __init__(self) -> None:
+        self._active = 0
+        self._peak = 0
+        self._lock = asyncio.Lock()
+
+    async def enter(self) -> None:
+        async with self._lock:
+            self._active += 1
+            if self._active > self._peak:
+                self._peak = self._active
+
+    async def exit(self) -> None:
+        async with self._lock:
+            self._active = max(0, self._active - 1)
+
+    @property
+    def peak(self) -> int:
+        return self._peak
+
+
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -358,6 +379,7 @@ def dump_summary_text(summary: dict[str, Any], out_txt: Path) -> None:
         f"success_requests: {run['success_requests']}",
         f"error_requests: {run['error_requests']}",
         f"success_rate: {run['success_rate']}%",
+        f"peak_task_concurrency: {run.get('peak_task_concurrency')}",
         f"status_code_counts: {json.dumps(run['status_code_counts'], ensure_ascii=False)}",
         f"error_type_counts: {json.dumps(run['error_type_counts'], ensure_ascii=False)}",
         "",
@@ -398,29 +420,37 @@ async def main_async(args: argparse.Namespace) -> int:
     print(f"[INFO] Queries: {len(queries)}")
     print("[INFO] Dispatch mode: all_at_once (full concurrency)")
 
+    concurrency_tracker = TaskConcurrencyTracker()
     async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
-        tasks = [
-            asyncio.create_task(
-                run_one(
+        async def run_one_with_tracking(query: str, idx: int) -> RequestResult:
+            await concurrency_tracker.enter()
+            try:
+                return await run_one(
                     session=session,
                     api_base=args.api_base,
                     agent_id=args.agent_id,
                     agent_config_id=args.agent_config_id,
-                    query=q,
-                    idx=i,
+                    query=query,
+                    idx=idx,
                     token=token,
                     timeout_sec=args.request_timeout_sec,
                     save_full_answer=args.save_full_answer,
                 )
-            )
+            finally:
+                await concurrency_tracker.exit()
+
+        tasks = [
+            asyncio.create_task(run_one_with_tracking(query=q, idx=i))
             for i, q in enumerate(queries, 1)
         ]
         results = await asyncio.gather(*tasks)
 
+    peak_task_concurrency = concurrency_tracker.peak
     elapsed_sec = time.perf_counter() - t0
     finished_at = now_iso()
 
     summary = build_summary(results, started_at, finished_at, elapsed_sec)
+    summary["run"]["peak_task_concurrency"] = peak_task_concurrency
 
     run_params = {
         "run_id": run_id,
@@ -435,6 +465,7 @@ async def main_async(args: argparse.Namespace) -> int:
         "auth_mode": auth_mode,
         "save_full_answer": args.save_full_answer,
         "limit": args.limit,
+        "peak_task_concurrency": peak_task_concurrency,
     }
 
     report_json = {
@@ -458,6 +489,9 @@ async def main_async(args: argparse.Namespace) -> int:
     print(f"[INFO] success/total: {summary['run']['success_requests']}/{summary['run']['total_requests']}")
     print(f"[INFO] success_rate: {summary['run']['success_rate']}%")
     print(f"[INFO] throughput_rps: {summary['run']['throughput_rps']}")
+    print(f"[INFO] peak_task_concurrency: {summary['run']['peak_task_concurrency']}")
+    print("[INFO] summary:")
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
 
     return 0
 
