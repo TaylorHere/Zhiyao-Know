@@ -152,118 +152,136 @@ async def run_one(
 
     t0 = time.perf_counter()
     request_started_at = now_iso()
-    first_chunk_ts: float | None = None
-    http_status: int | None = None
-    stream_lines = 0
-    response_chars = 0
-    finished = False
-    answer_parts: list[str] = []
+    retry_count = 0
+    while True:
+        first_chunk_ts: float | None = None
+        http_status: int | None = None
+        stream_lines = 0
+        response_chars = 0
+        finished = False
+        answer_parts: list[str] = []
 
-    try:
-        async with session.post(url, json=payload) as resp:
-            http_status = resp.status
-            buf = ""
-            async for raw in resp.content.iter_chunked(8192):
-                if first_chunk_ts is None:
-                    first_chunk_ts = time.perf_counter()
-                buf += raw.decode("utf-8", errors="ignore")
-                while "\n" in buf:
-                    line, buf = buf.split("\n", 1)
-                    line = line.strip()
-                    if not line:
-                        continue
+        try:
+            async with session.post(url, json=payload) as resp:
+                http_status = resp.status
+                if http_status == 429:
+                    retry_count += 1
+                    retry_after = resp.headers.get("Retry-After")
+                    retry_after_sec = 1.0
+                    if retry_after:
+                        try:
+                            retry_after_sec = max(float(retry_after), 0.0)
+                        except ValueError:
+                            pass
+                    print(
+                        f"[WARN] Request #{idx} hit 429, retrying forever "
+                        f"(retry_count={retry_count}, sleep={retry_after_sec}s)"
+                    )
+                    await asyncio.sleep(retry_after_sec)
+                    continue
+
+                buf = ""
+                async for raw in resp.content.iter_chunked(8192):
+                    if first_chunk_ts is None:
+                        first_chunk_ts = time.perf_counter()
+                    buf += raw.decode("utf-8", errors="ignore")
+                    while "\n" in buf:
+                        line, buf = buf.split("\n", 1)
+                        line = line.strip()
+                        if not line:
+                            continue
+                        stream_lines += 1
+
+                        try:
+                            obj = json.loads(line)
+                        except Exception:
+                            continue
+
+                        part = obj.get("response")
+                        if isinstance(part, str) and part:
+                            response_chars += len(part)
+                            if save_full_answer:
+                                answer_parts.append(part)
+                            elif len("".join(answer_parts)) < 600:
+                                answer_parts.append(part)
+
+                        if obj.get("status") == "finished":
+                            finished = True
+
+                # Handle the final buffered line without trailing newline
+                tail = buf.strip()
+                if tail:
                     stream_lines += 1
-
                     try:
-                        obj = json.loads(line)
+                        obj = json.loads(tail)
+                        part = obj.get("response")
+                        if isinstance(part, str) and part:
+                            response_chars += len(part)
+                            if save_full_answer:
+                                answer_parts.append(part)
+                            elif len("".join(answer_parts)) < 600:
+                                answer_parts.append(part)
+                        if obj.get("status") == "finished":
+                            finished = True
                     except Exception:
-                        continue
+                        pass
 
-                    part = obj.get("response")
-                    if isinstance(part, str) and part:
-                        response_chars += len(part)
-                        if save_full_answer:
-                            answer_parts.append(part)
-                        elif len("".join(answer_parts)) < 600:
-                            answer_parts.append(part)
+            t1 = time.perf_counter()
+            total_ms = (t1 - t0) * 1000
+            ttft_ms = (first_chunk_ts - t0) * 1000 if first_chunk_ts else None
+            answer_preview = "".join(answer_parts).replace("\n", " ").strip()
+            ok = http_status == 200 and finished
 
-                    if obj.get("status") == "finished":
-                        finished = True
-
-            # Handle the final buffered line without trailing newline
-            tail = buf.strip()
-            if tail:
-                stream_lines += 1
-                try:
-                    obj = json.loads(tail)
-                    part = obj.get("response")
-                    if isinstance(part, str) and part:
-                        response_chars += len(part)
-                        if save_full_answer:
-                            answer_parts.append(part)
-                        elif len("".join(answer_parts)) < 600:
-                            answer_parts.append(part)
-                    if obj.get("status") == "finished":
-                        finished = True
-                except Exception:
-                    pass
-
-        t1 = time.perf_counter()
-        total_ms = (t1 - t0) * 1000
-        ttft_ms = (first_chunk_ts - t0) * 1000 if first_chunk_ts else None
-        answer_preview = "".join(answer_parts).replace("\n", " ").strip()
-        ok = http_status == 200 and finished
-
-        return RequestResult(
-            index=idx,
-            query=query,
-            request_started_at=request_started_at,
-            request_ended_at=now_iso(),
-            http_status=http_status,
-            ok=ok,
-            finished=finished,
-            total_ms=round(total_ms, 3),
-            ttft_ms=None if ttft_ms is None else round(ttft_ms, 3),
-            stream_lines=stream_lines,
-            response_chars=response_chars,
-            answer_preview=answer_preview,
-            error_type=None,
-            error_message=None,
-        )
-    except asyncio.TimeoutError as e:
-        return RequestResult(
-            index=idx,
-            query=query,
-            request_started_at=request_started_at,
-            request_ended_at=now_iso(),
-            http_status=http_status,
-            ok=False,
-            finished=False,
-            total_ms=round((time.perf_counter() - t0) * 1000, 3),
-            ttft_ms=None if first_chunk_ts is None else round((first_chunk_ts - t0) * 1000, 3),
-            stream_lines=stream_lines,
-            response_chars=response_chars,
-            answer_preview="",
-            error_type=type(e).__name__,
-            error_message=str(e),
-        )
-    except Exception as e:
-        return RequestResult(
-            index=idx,
-            query=query,
-            request_started_at=request_started_at,
-            request_ended_at=now_iso(),
-            http_status=http_status,
-            ok=False,
-            finished=False,
-            total_ms=round((time.perf_counter() - t0) * 1000, 3),
-            ttft_ms=None if first_chunk_ts is None else round((first_chunk_ts - t0) * 1000, 3),
-            stream_lines=stream_lines,
-            response_chars=response_chars,
-            answer_preview="",
-            error_type=type(e).__name__,
-            error_message=str(e),
-        )
+            return RequestResult(
+                index=idx,
+                query=query,
+                request_started_at=request_started_at,
+                request_ended_at=now_iso(),
+                http_status=http_status,
+                ok=ok,
+                finished=finished,
+                total_ms=round(total_ms, 3),
+                ttft_ms=None if ttft_ms is None else round(ttft_ms, 3),
+                stream_lines=stream_lines,
+                response_chars=response_chars,
+                answer_preview=answer_preview,
+                error_type=None,
+                error_message=None,
+            )
+        except asyncio.TimeoutError as e:
+            return RequestResult(
+                index=idx,
+                query=query,
+                request_started_at=request_started_at,
+                request_ended_at=now_iso(),
+                http_status=http_status,
+                ok=False,
+                finished=False,
+                total_ms=round((time.perf_counter() - t0) * 1000, 3),
+                ttft_ms=None if first_chunk_ts is None else round((first_chunk_ts - t0) * 1000, 3),
+                stream_lines=stream_lines,
+                response_chars=response_chars,
+                answer_preview="",
+                error_type=type(e).__name__,
+                error_message=str(e),
+            )
+        except Exception as e:
+            return RequestResult(
+                index=idx,
+                query=query,
+                request_started_at=request_started_at,
+                request_ended_at=now_iso(),
+                http_status=http_status,
+                ok=False,
+                finished=False,
+                total_ms=round((time.perf_counter() - t0) * 1000, 3),
+                ttft_ms=None if first_chunk_ts is None else round((first_chunk_ts - t0) * 1000, 3),
+                stream_lines=stream_lines,
+                response_chars=response_chars,
+                answer_preview="",
+                error_type=type(e).__name__,
+                error_message=str(e),
+            )
 
 
 def build_summary(results: list[RequestResult], started_at: str, finished_at: str, elapsed_sec: float) -> dict[str, Any]:
