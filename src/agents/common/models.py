@@ -28,6 +28,11 @@ def load_chat_model(fully_specified_name: str, **kwargs) -> BaseChatModel:
     base_url = get_docker_safe_url(model_info.base_url)
     # Keep the agent call chain streaming by default.
     kwargs.setdefault("streaming", True)
+    if provider == "vllm-local":
+        extra_body = kwargs.get("extra_body") or {}
+        if "priority" not in extra_body:
+            extra_body["priority"] = 0
+        kwargs["extra_body"] = extra_body
 
     if provider in ["openai", "deepseek"]:
         model_spec = f"{provider}:{model}"
