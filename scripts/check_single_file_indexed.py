@@ -48,6 +48,69 @@ async def get_kb_id(token: str, kb_name: str) -> str:
     raise RuntimeError(f"Knowledge base not found: {kb_name}")
 
 
+async def get_system_defaults(token: str) -> tuple[str, str]:
+    """
+    Read system default model config from /api/system/config.
+    Returns: (embed_model_name, default_model)
+    """
+    headers = {"Authorization": f"Bearer {token}"}
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.get(f"{API_BASE_URL}/api/system/config", headers=headers)
+    if resp.status_code != 200:
+        # fallback values for common local profile
+        embed_model = os.getenv("YUXI_EMBED_MODEL", "vllm/Qwen/Qwen3-Embedding-0.6B")
+        default_model = os.getenv("YUXI_DEFAULT_MODEL", "vllm-local/Qwen3.5-35B-A3B-FP8")
+        print(
+            "Warning: failed to load /api/system/config, "
+            f"using fallback defaults embed_model={embed_model}, default_model={default_model}"
+        )
+        return embed_model, default_model
+
+    cfg = resp.json() or {}
+    embed_model = cfg.get("embed_model") or os.getenv("YUXI_EMBED_MODEL", "vllm/Qwen/Qwen3-Embedding-0.6B")
+    default_model = cfg.get("default_model") or os.getenv("YUXI_DEFAULT_MODEL", "vllm-local/Qwen3.5-35B-A3B-FP8")
+    return embed_model, default_model
+
+
+async def ensure_kb_id(token: str, kb_name: str) -> str:
+    headers = {"Authorization": f"Bearer {token}"}
+
+    try:
+        return await get_kb_id(token, kb_name)
+    except RuntimeError:
+        pass
+
+    embed_model_name, default_model = await get_system_defaults(token)
+    payload = {
+        "database_name": kb_name,
+        "description": "Auto-created by check_single_file_indexed.py",
+        "embed_model_name": embed_model_name,
+        "kb_type": "milvus",
+        "additional_params": {},
+        "llm_info": {"model": default_model},
+    }
+
+    async with httpx.AsyncClient(timeout=60) as client:
+        resp = await client.post(
+            f"{API_BASE_URL}/api/knowledge/databases",
+            headers=headers,
+            json=payload,
+        )
+
+    if resp.status_code != 200:
+        raise RuntimeError(f"Failed to create KB {kb_name}: {resp.status_code} {resp.text}")
+
+    kb_id = resp.json().get("db_id")
+    if not kb_id:
+        raise RuntimeError(f"Create KB succeeded but db_id missing: {resp.text}")
+
+    print(
+        f"Knowledge base created: name={kb_name}, db_id={kb_id}, "
+        f"embed_model={embed_model_name}, default_model={default_model}"
+    )
+    return kb_id
+
+
 async def get_file_record(token: str, kb_id: str, filename: str) -> dict | None:
     headers = {"Authorization": f"Bearer {token}"}
     async with httpx.AsyncClient(timeout=30) as client:
@@ -97,7 +160,7 @@ async def main() -> None:
     print(f"Target knowledge base: {args.kb_name}")
 
     token = await get_token()
-    kb_id = await get_kb_id(token, args.kb_name)
+    kb_id = await ensure_kb_id(token, args.kb_name)
     record = await get_file_record(token, kb_id, filename)
     if not record:
         raise SystemExit("Result: file record not found")
