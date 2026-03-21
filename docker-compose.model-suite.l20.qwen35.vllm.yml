@@ -25,7 +25,7 @@ services:
       - "24576"
       - --enable-auto-tool-choice
       - --tool-call-parser
-      - hermes
+      - qwen3_coder
       - --trust-remote-code
     volumes:
       - ${MODEL_DIR:-./models}:/models
