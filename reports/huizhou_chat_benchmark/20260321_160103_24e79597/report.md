@@ -1,20 +1,4 @@
-# HuizhouPowerQAAgent 并发压测报告
-
-## 运行概览
-
-| 指标 | 值 |
-|---|---|
-| started_at | 2026-03-21T22:19:08.832315+00:00 |
-| finished_at | 2026-03-21T22:21:20.359739+00:00 |
-| elapsed_sec | 131.527 |
-| throughput_rps | 1.863 |
-| output_tokens_total | 35994 |
-| throughput_tokens_per_sec | 273.662 |
-| total_requests | 245 |
-| success_requests | 148 |
-| error_requests | 97 |
-| success_rate | 60.408% |
-| peak_task_concurrency | 245 |
+# 并发压测报告
 
 ## 请求赛道图
 
