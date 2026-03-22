@@ -22,7 +22,9 @@
 
     <!-- 助手消息 -->
     <div v-else-if="message.type === 'ai'" class="assistant-message">
-      <div v-if="parsedData.reasoning_content" class="reasoning-box">
+      <div v-if="showThinkingOnly" class="thinking-only">思考中</div>
+
+      <div v-else-if="parsedData.reasoning_content" class="reasoning-box">
         <a-collapse v-model:activeKey="reasoningActiveKey" :bordered="false">
           <template #expandIcon="{ isActive }">
             <caret-right-outlined :rotate="isActive ? 90 : 0" />
@@ -39,7 +41,7 @@
 
       <!-- 消息内容 -->
       <MdPreview
-        v-if="parsedData.content"
+        v-if="parsedData.content && !showThinkingOnly"
         ref="editorRef"
         editorId="preview-only"
         :theme="theme"
@@ -50,7 +52,7 @@
         class="message-md"
       />
 
-      <div v-else-if="parsedData.reasoning_content" class="empty-block"></div>
+      <div v-else-if="parsedData.reasoning_content && !showThinkingOnly" class="empty-block"></div>
 
       <!-- 错误提示块 -->
       <div v-if="displayError" class="error-hint">
@@ -311,6 +313,14 @@ const parsedData = computed(() => {
     reasoning_content
   }
 })
+
+const showThinkingOnly = computed(() => {
+  if (props.message.type !== 'ai') return false
+
+  if (props.message.status === 'reasoning') return true
+
+  return !!parsedData.value.reasoning_content && !parsedData.value.content
+})
 </script>
 
 <style lang="less" scoped>
@@ -472,6 +482,12 @@ const parsedData = computed(() => {
 
   .assistant-message {
     width: 100%;
+  }
+
+  .thinking-only {
+    margin: 10px 0;
+    font-size: 14px;
+    color: var(--gray-700);
   }
 
   .error-hint {
