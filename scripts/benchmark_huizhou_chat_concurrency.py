@@ -824,12 +824,107 @@ def dump_concurrency_latency_curve_svg(
     out_svg.write_text("\n".join(parts), encoding="utf-8")
 
 
+def dump_concurrency_ttft_curve_svg(sweep_rows: list[dict[str, Any]], out_svg: Path) -> None:
+    rows = [row for row in sweep_rows if isinstance(row.get("concurrency"), int) and row.get("ttft_avg_ms") is not None]
+    if not rows:
+        out_svg.write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="900" height="140">'
+            '<text x="20" y="70" font-family="Arial,sans-serif" font-size="16">'
+            "No TTFT data to draw concurrency-ttft curve."
+            "</text></svg>",
+            encoding="utf-8",
+        )
+        return
+
+    points = [(int(row["concurrency"]), float(row["ttft_avg_ms"])) for row in rows]
+    min_concurrency = min(c for c, _ in points)
+    max_concurrency = max(c for c, _ in points)
+    max_ttft = max(max(v for _, v in points), 1.0)
+    best_c, best_ttft = min(points, key=lambda item: (item[1], item[0]))
+
+    left = 80
+    right = 40
+    top = 80
+    bottom = 80
+    plot_w = 980
+    plot_h = 430
+    width = left + plot_w + right
+    height = top + plot_h + bottom
+
+    def x_for(concurrency: int) -> float:
+        if max_concurrency == min_concurrency:
+            return left + plot_w / 2
+        return left + (concurrency - min_concurrency) / (max_concurrency - min_concurrency) * plot_w
+
+    def y_for(ttft_ms: float) -> float:
+        return top + (1 - ttft_ms / max_ttft) * plot_h
+
+    parts: list[str] = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}">',
+        "<style>",
+        "text { font-family: Arial, sans-serif; fill: #222; }",
+        ".title { font-size: 22px; font-weight: 700; }",
+        ".sub { font-size: 13px; fill: #666; }",
+        ".axis { font-size: 12px; fill: #666; }",
+        ".legend { font-size: 12px; }",
+        "</style>",
+        '<rect x="0" y="0" width="100%" height="100%" fill="#fff"/>',
+        f'<text class="title" x="{left}" y="36">Concurrency vs TTFT</text>',
+        f'<text class="sub" x="{left}" y="58">TTFT unit: ms, lower is better</text>',
+    ]
+
+    y_ticks = 6
+    for i in range(y_ticks + 1):
+        ratio = i / y_ticks
+        value = max_ttft * (1 - ratio)
+        y = top + ratio * plot_h
+        parts.append(f'<line x1="{left}" y1="{y:.2f}" x2="{left + plot_w}" y2="{y:.2f}" stroke="#f0f0f0"/>')
+        parts.append(
+            f'<text class="axis" x="{left - 8}" y="{y + 4:.2f}" text-anchor="end">{value:.1f}</text>'
+        )
+
+    for c, _ in points:
+        x = x_for(c)
+        parts.append(f'<line x1="{x:.2f}" y1="{top}" x2="{x:.2f}" y2="{top + plot_h}" stroke="#fafafa"/>')
+        parts.append(
+            f'<text class="axis" x="{x:.2f}" y="{top + plot_h + 22}" text-anchor="middle">{c}</text>'
+        )
+
+    parts.append(
+        f'<text class="axis" x="{left + plot_w / 2:.2f}" y="{height - 24}" text-anchor="middle">concurrency</text>'
+    )
+    parts.append(
+        f'<text class="axis" transform="translate(24,{top + plot_h / 2:.2f}) rotate(-90)" text-anchor="middle">ttft (ms)</text>'
+    )
+
+    parts.append(f'<rect x="{left}" y="66" width="16" height="4" fill="#722ed1" rx="2" ry="2"/>')
+    parts.append(f'<text class="legend" x="{left + 22}" y="72">ttft_avg</text>')
+
+    point_str = " ".join(f"{x_for(c):.2f},{y_for(v):.2f}" for c, v in points)
+    parts.append(f'<polyline fill="none" stroke="#722ed1" stroke-width="2.4" points="{point_str}"/>')
+    for c, v in points:
+        parts.append(
+            f'<circle cx="{x_for(c):.2f}" cy="{y_for(v):.2f}" r="3.2" fill="#fff" stroke="#722ed1" stroke-width="1.8"/>'
+        )
+
+    bx = x_for(best_c)
+    by = y_for(best_ttft)
+    parts.append(f'<circle cx="{bx:.2f}" cy="{by:.2f}" r="6" fill="none" stroke="#13c2c2" stroke-width="2.2"/>')
+    parts.append(
+        f'<text class="sub" x="{bx + 10:.2f}" y="{by - 10:.2f}">best ttft: c={best_c}, {best_ttft:.1f}ms</text>'
+    )
+
+    parts.append("</svg>")
+    out_svg.write_text("\n".join(parts), encoding="utf-8")
+
+
 def dump_markdown_report(
     summary: dict[str, Any],
     out_md: Path,
     race_track_svg_name: str,
     sweep_rows: list[dict[str, Any]] | None = None,
     sweep_curve_svg_name: str | None = None,
+    sweep_ttft_curve_svg_name: str | None = None,
     sweep_best_point: dict[str, Any] | None = None,
 ) -> None:
     run = summary["run"]
@@ -879,6 +974,10 @@ def dump_markdown_report(
                 "## 并发 vs 延迟曲线（阶梯压测）",
                 "",
                 f"![并发-延迟曲线]({sweep_curve_svg_name})" if sweep_curve_svg_name else "",
+                "",
+                "## 并发 vs TTFT 曲线（阶梯压测）",
+                "",
+                f"![并发-TTFT曲线]({sweep_ttft_curve_svg_name})" if sweep_ttft_curve_svg_name else "",
                 "",
             ]
         )
@@ -1013,18 +1112,21 @@ async def main_async(args: argparse.Namespace) -> int:
     out_svg = out_dir / "request_race_track.svg"
     out_sweep_csv = out_dir / "concurrency_sweep.csv"
     out_sweep_svg = out_dir / "concurrency_latency_curve.svg"
+    out_sweep_ttft_svg = out_dir / "concurrency_ttft_curve.svg"
     out_md = out_dir / "report.md"
 
     dump_request_race_track_svg(results, out_svg)
     if args.sweep_concurrency:
         dump_concurrency_sweep_csv(sweep_rows, out_sweep_csv)
         dump_concurrency_latency_curve_svg(sweep_rows, out_sweep_svg, sweep_best_point)
+        dump_concurrency_ttft_curve_svg(sweep_rows, out_sweep_ttft_svg)
     dump_markdown_report(
         summary,
         out_md,
         out_svg.name,
         sweep_rows=sweep_rows if args.sweep_concurrency else None,
         sweep_curve_svg_name=out_sweep_svg.name if args.sweep_concurrency else None,
+        sweep_ttft_curve_svg_name=out_sweep_ttft_svg.name if args.sweep_concurrency else None,
         sweep_best_point=sweep_best_point if args.sweep_concurrency else None,
     )
 
@@ -1035,6 +1137,7 @@ async def main_async(args: argparse.Namespace) -> int:
     if args.sweep_concurrency:
         report_json["artifacts"]["concurrency_sweep_csv"] = out_sweep_csv.name
         report_json["artifacts"]["concurrency_latency_curve_svg"] = out_sweep_svg.name
+        report_json["artifacts"]["concurrency_ttft_curve_svg"] = out_sweep_ttft_svg.name
 
     out_json.write_text(json.dumps(report_json, ensure_ascii=False, indent=2), encoding="utf-8")
     dump_csv(results, out_csv)
@@ -1048,6 +1151,7 @@ async def main_async(args: argparse.Namespace) -> int:
     if args.sweep_concurrency:
         print(f"[INFO] concurrency_sweep.csv: {out_sweep_csv}")
         print(f"[INFO] concurrency_latency_curve.svg: {out_sweep_svg}")
+        print(f"[INFO] concurrency_ttft_curve.svg: {out_sweep_ttft_svg}")
     print(f"[INFO] report.md: {out_md}")
     print(f"[INFO] success/total: {summary['run']['success_requests']}/{summary['run']['total_requests']}")
     print(f"[INFO] success_rate: {summary['run']['success_rate']}%")

@@ -7186,6 +7186,7 @@
     "request_race_track_svg": "request_race_track.svg",
     "report_markdown": "report.md",
     "concurrency_sweep_csv": "concurrency_sweep.csv",
-    "concurrency_latency_curve_svg": "concurrency_latency_curve.svg"
+    "concurrency_latency_curve_svg": "concurrency_latency_curve.svg",
+    "concurrency_ttft_curve_svg": "concurrency_ttft_curve.svg"
   }
 }

@@ -36,6 +36,10 @@
 
 ![并发-延迟曲线](concurrency_latency_curve.svg)
 
+## 并发 vs TTFT 曲线（阶梯压测）
+
+![并发-TTFT曲线](concurrency_ttft_curve.svg)
+
 - 最优 p95 点: concurrency=1, p95=6093.285ms
 
 | concurrency | avg_ms | p95_ms | p99_ms | ttft_avg_ms | throughput_rps | token/s | success_rate |
