@@ -652,7 +652,7 @@ class KnowledgeBase(ABC):
         self._ensure_metadata_loaded()
 
         databases = []
-        for db_id, meta in self.databases_meta.items():
+        for db_id, meta in list(self.databases_meta.items()):
             # 检查并修复异常的processing状态
             self._check_and_fix_processing_status(db_id)
 
@@ -948,7 +948,7 @@ class KnowledgeBase(ABC):
             检索器字典
         """
         retrievers = {}
-        for db_id, meta in self.databases_meta.items():
+        for db_id, meta in list(self.databases_meta.items()):
 
             def make_retriever(db_id):
                 async def retriever(query_text, **kwargs):
@@ -1050,7 +1050,7 @@ class KnowledgeBase(ABC):
 
         self._normalize_metadata_state()
 
-        for db_id, meta in self.databases_meta.items():
+        for db_id, meta in list(self.databases_meta.items()):
             existing = await kb_repo.get_by_id(db_id)
             payload = {
                 "db_id": db_id,
@@ -1105,8 +1105,8 @@ class KnowledgeBase(ABC):
                 },
             )
 
-        for db_id, benchmarks in self.benchmarks_meta.items():
-            for benchmark_id, meta in benchmarks.items():
+        for db_id, benchmarks in list(self.benchmarks_meta.items()):
+            for benchmark_id, meta in list(benchmarks.items()):
                 existing = await eval_repo.get_benchmark(benchmark_id)
                 payload = {
                     "benchmark_id": benchmark_id,

@@ -93,6 +93,11 @@ class MinIOClient:
 
             return True
         except S3Error as e:
+            error_code = getattr(e, "code", "")
+            if error_code in {"BucketAlreadyOwnedByYou", "BucketAlreadyExists"}:
+                logger.info(f"存储桶 '{bucket_name}' 已存在（并发创建），继续使用")
+                self._ensure_public_read_access(bucket_name)
+                return True
             logger.error(f"存储桶 '{bucket_name}' 错误: {e}")
             raise StorageError(f"Error with bucket '{bucket_name}': {e}")
         except StorageError:
