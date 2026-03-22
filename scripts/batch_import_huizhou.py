@@ -122,6 +122,7 @@ class HuizhouImporter:
     def __init__(self, dry_run: bool = False):
         self.dry_run = dry_run
         self.token = None
+        self.embed_model_name = os.getenv("YUXI_EMBED_MODEL")
         self.dept_id_cache = {}  # 部门路径 -> 部门ID
         self.kb_id_cache = {}    # 知识库名称 -> 知识库ID
         self.stats = {
@@ -229,6 +230,38 @@ class HuizhouImporter:
     def get_headers(self):
         """获取认证头"""
         return {"Authorization": f"Bearer {self.token}"}
+
+    async def resolve_embed_model_name(self) -> str:
+        """优先读取系统默认 embedding 模型配置"""
+        if self.embed_model_name:
+            return self.embed_model_name
+
+        # 与 config._apply_env_overrides 保持一致的本地兜底
+        fallback_model = "vllm/Qwen/Qwen3-Embedding-0.6B"
+
+        if self.dry_run:
+            self.embed_model_name = fallback_model
+            return self.embed_model_name
+
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(
+                    f"{API_BASE_URL}/api/system/config",
+                    headers=self.get_headers(),
+                )
+            if resp.status_code == 200:
+                data = resp.json() or {}
+                model = data.get("embed_model")
+                if isinstance(model, str) and model.strip():
+                    self.embed_model_name = model.strip()
+                    print(f"  ✅ 使用系统默认 Embedding 模型: {self.embed_model_name}")
+                    return self.embed_model_name
+            print(f"  ⚠️  读取系统配置失败，使用兜底模型: {fallback_model}")
+        except Exception as e:
+            print(f"  ⚠️  读取系统配置异常，使用兜底模型: {fallback_model} ({e})")
+
+        self.embed_model_name = fallback_model
+        return self.embed_model_name
 
     async def kb_exists(self, kb_id: str) -> bool:
         """检查知识库ID是否存在且可访问"""
@@ -369,6 +402,8 @@ class HuizhouImporter:
             print(f"      [DRY-RUN] 模拟ID: {fake_id}")
             return fake_id
         
+        embed_model_name = await self.resolve_embed_model_name()
+
         async with httpx.AsyncClient(timeout=60) as client:
             response = await client.post(
                 f"{API_BASE_URL}/api/knowledge/databases",
@@ -376,7 +411,7 @@ class HuizhouImporter:
                 json={
                     "database_name": name,
                     "description": f"惠州电力局 - {full_path}",
-                    "embed_model_name": "siliconflow/BAAI/bge-m3",
+                    "embed_model_name": embed_model_name,
                     "kb_type": "milvus",
                     "additional_params": {},
                     "share_config": {
