@@ -15,6 +15,7 @@ services:
       - ./.env:/app/.env
       - ${MODEL_DIR:-./models}:/models # 使用默认值处理未定义的环境变量
       - ./data/qa_datasets/:/app/saves/qa_datasets/
+      - ./docker/nltk_data:/app/nltk_data:ro
     ports:
       - "5050:5050"
     networks:
@@ -25,6 +26,7 @@ services:
       - .env
     # region api_envs
     environment:
+      - NLTK_DATA=/app/nltk_data
       - HOST_IP=${HOST_IP:-}
       - POSTGRES_URL=${POSTGRES_URL:-postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-yuxi_know}}
       - POSTGRES_POOL_SIZE=${POSTGRES_POOL_SIZE:-40}
