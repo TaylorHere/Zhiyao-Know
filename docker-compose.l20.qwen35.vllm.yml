@@ -13,12 +13,16 @@ services:
       - LANG=C.UTF-8
       - LC_ALL=C.UTF-8
       - PYTHONUTF8=1
+      - TIKTOKEN_CACHE_DIR=/tmp/data-gym-cache
     command:
       - /bin/sh
       - -c
       - >
+        python -c "import hashlib,shutil,os;from pathlib import Path;src=Path('/app/docker/tiktoken/encodings');cache=Path(os.getenv('TIKTOKEN_CACHE_DIR','/tmp/data-gym-cache'));cache.mkdir(parents=True,exist_ok=True);m={'https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken':'o200k_base.tiktoken','https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken':'cl100k_base.tiktoken','https://openaipublic.blob.core.windows.net/encodings/p50k_base.tiktoken':'p50k_base.tiktoken','https://openaipublic.blob.core.windows.net/encodings/r50k_base.tiktoken':'r50k_base.tiktoken','https://openaipublic.blob.core.windows.net/gpt-2/encodings/main/vocab.bpe':'gpt2_vocab.bpe','https://openaipublic.blob.core.windows.net/gpt-2/encodings/main/encoder.json':'gpt2_encoder.json'};[(shutil.copyfile(src/fn,cache/hashlib.sha1(url.encode()).hexdigest()) if (src/fn).exists() else None) for url,fn in m.items()]";
         WORKERS=$(( $(nproc) / 2 )); if [ "$$WORKERS" -lt 1 ]; then WORKERS=1; fi;
         exec uvicorn server.main:app --host 0.0.0.0 --port 5050 --workers "$$WORKERS" --loop uvloop --http httptools
+    volumes:
+      - ./docker/tiktoken/encodings:/app/docker/tiktoken/encodings:ro
 
     shm_size: 8g
     ipc: host
