@@ -10,6 +10,7 @@ ENV PIP_INDEX_URL=${PIP_INDEX_URL}
 ENV PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST}
 ENV PIP_NO_CACHE_DIR=1
 ENV TIKTOKEN_CACHE_DIR=/opt/tiktoken_cache
+ENV LITELLM_LOCAL_MODEL_COST_MAP=true
 
 COPY docker/tiktoken/encodings/o200k_base.tiktoken /tmp/o200k_base.tiktoken
 
