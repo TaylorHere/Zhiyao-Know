@@ -119,8 +119,9 @@ def get_directory_structure(root_path: str) -> dict:
 
 
 class HuizhouImporter:
-    def __init__(self, dry_run: bool = False):
+    def __init__(self, dry_run: bool = False, concurrency: int = 1):
         self.dry_run = dry_run
+        self.concurrency = max(1, concurrency)
         self.token = None
         self.embed_model_name = os.getenv("YUXI_EMBED_MODEL")
         self.dept_id_cache = {}  # 部门路径 -> 部门ID
@@ -697,6 +698,7 @@ class HuizhouImporter:
         print("="*60)
         print(f"源目录: {SOURCE_DIR}")
         print(f"模式: {'DRY-RUN (仅预览)' if self.dry_run else '实际执行'}")
+        print(f"上传并发: {self.concurrency}")
         
         # 1. 解析目录结构
         print("\n" + "-"*60)
@@ -776,13 +778,27 @@ class HuizhouImporter:
             
             # 上传文件
             file_infos = []  # [(minio_path, content_hash), ...]
-            for file_path in files:
-                result = await self.upload_file(kb_id, file_path)
-                if result:
-                    file_infos.append(result)
-                
-                if not self.dry_run:
-                    await asyncio.sleep(2.0)  # 增加延时到2秒，避免请求过快
+            if self.concurrency <= 1:
+                for file_path in files:
+                    result = await self.upload_file(kb_id, file_path)
+                    if result:
+                        file_infos.append(result)
+            else:
+                semaphore = asyncio.Semaphore(self.concurrency)
+
+                async def _upload_with_limit(path: str):
+                    async with semaphore:
+                        return await self.upload_file(kb_id, path)
+
+                upload_tasks = [asyncio.create_task(_upload_with_limit(path)) for path in files]
+                upload_results = await asyncio.gather(*upload_tasks, return_exceptions=True)
+                for result in upload_results:
+                    if isinstance(result, Exception):
+                        self.stats["files_failed"] += 1
+                        print(f"      ❌ 并发上传任务异常: {type(result).__name__}: {result}")
+                        continue
+                    if result:
+                        file_infos.append(result)
             
             # 添加文档并入库
             if file_infos:
@@ -802,9 +818,10 @@ class HuizhouImporter:
 async def main():
     parser = argparse.ArgumentParser(description="惠州电力局文件批量导入")
     parser.add_argument("--dry-run", action="store_true", help="仅预览，不实际执行")
+    parser.add_argument("--concurrency", type=int, default=1, help="单个知识库内文件上传并发数，默认 1")
     args = parser.parse_args()
     
-    importer = HuizhouImporter(dry_run=args.dry_run)
+    importer = HuizhouImporter(dry_run=args.dry_run, concurrency=args.concurrency)
     await importer.run()
 
 
