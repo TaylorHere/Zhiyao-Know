@@ -277,6 +277,26 @@ const parsedData = computed(() => {
     content = content.replace(thinkMatch[0], '').trim()
   }
 
+  // Fallback #1: handle orphan closing tag without opening <think>
+  // Example: "Thinking Process: ... </think> final answer..."
+  if (!reasoning_content && content.includes('</think>')) {
+    const closeTag = '</think>'
+    const closeIdx = content.indexOf(closeTag)
+    const before = content.slice(0, closeIdx).trim()
+    const after = content.slice(closeIdx + closeTag.length).trim()
+    if (before) {
+      reasoning_content = before.replace(/^thinking process:\s*/i, '').trim()
+      content = after
+    }
+  }
+
+  // Fallback #2: handle plain "Thinking Process:" style output
+  // without think tags (some models return this directly).
+  if (!reasoning_content && /^thinking process:\s*/i.test(content)) {
+    reasoning_content = content.replace(/^thinking process:\s*/i, '').trim()
+    content = ''
+  }
+
   // 过滤掉工具调用相关的标签，这些标签应该通过 ToolCallRenderer 组件显示，而不是在内容中显示
   // 匹配类似 <调用工具>、<工具名称="xxx">、<输入>、<输出> 等标签及其内容
   // 支持嵌套和分开的标签格式

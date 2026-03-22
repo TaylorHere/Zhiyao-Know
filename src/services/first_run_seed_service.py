@@ -40,6 +40,28 @@ class FirstRunSeedService:
     DATASET_JSONL = "hz_power_marketing_qa_dataset_20260320.jsonl"
 
     @classmethod
+    def _resolve_system_embed_info(cls) -> dict:
+        embed_model_name = config.embed_model
+        embed_info = config.embed_model_names.get(embed_model_name)
+        if embed_info is None:
+            first_key = next(iter(config.embed_model_names.keys()))
+            embed_info = config.embed_model_names[first_key]
+        return embed_info.model_dump() if hasattr(embed_info, "model_dump") else dict(embed_info)
+
+    @classmethod
+    def _resolve_system_llm_info(cls) -> dict:
+        model_spec = (config.default_model or "").strip()
+        provider = ""
+        model_name = model_spec
+        if "/" in model_spec:
+            provider, model_name = model_spec.split("/", 1)
+        return {
+            "provider": provider,
+            "model_name": model_name,
+            "model_spec": model_spec,
+        }
+
+    @classmethod
     async def log_startup_binding_status(cls) -> None:
         if not pg_manager._initialized:
             pg_manager.initialize()
@@ -166,17 +188,19 @@ class FirstRunSeedService:
     @classmethod
     async def _ensure_hidden_kb(cls, department_id: int | None) -> str:
         repo = KnowledgeBaseRepository()
+        embed_info_dict = cls._resolve_system_embed_info()
+        llm_info_dict = cls._resolve_system_llm_info()
         rows = await repo.get_all()
         for row in rows:
             if (row.name or "").strip() == cls.KB_NAME:
+                await repo.update(
+                    row.db_id,
+                    {
+                        "embed_info": embed_info_dict,
+                        "llm_info": llm_info_dict,
+                    },
+                )
                 return row.db_id
-
-        embed_model_name = config.embed_model
-        embed_info = config.embed_model_names.get(embed_model_name)
-        if embed_info is None:
-            # 理论上不会发生，做最小兜底
-            first_key = next(iter(config.embed_model_names.keys()))
-            embed_info = config.embed_model_names[first_key]
 
         share_config = {
             "is_shared": False,
@@ -187,7 +211,8 @@ class FirstRunSeedService:
             database_name=cls.KB_NAME,
             description=cls.KB_DESC,
             kb_type="lightrag",
-            embed_info=embed_info.model_dump() if hasattr(embed_info, "model_dump") else dict(embed_info),
+            embed_info=embed_info_dict,
+            llm_info=llm_info_dict,
             share_config=share_config,
             visibility=KB_VISIBILITY_AGENT_ONLY,
             auto_generate_questions=False,
