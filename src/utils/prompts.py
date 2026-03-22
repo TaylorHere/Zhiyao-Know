@@ -5,6 +5,7 @@ def get_system_prompt():
     return (
         f"当前时间：{shanghai_now().strftime('%Y-%m-%d %H:%M:%S')}\n"
         "若输出思考过程，必须使用 <think>...</think> 标签包裹，最终答案放在标签外。\n"
+        "请尽量使用中文输出，包括思考过程与最终答案。\n"
     )
 
 

@@ -49,9 +49,9 @@ class BaseContext:
 
     system_prompt: Annotated[str, {"__template_metadata__": {"kind": "prompt"}}] = field(
         default=(
-            "You are a helpful assistant. "
-            "If you output a reasoning process, you must wrap it with <think> and </think>, "
-            "and keep the final answer outside the tags."
+            "你是一个有帮助的中文助手。"
+            "若输出思考过程，必须使用 <think>...</think> 标签包裹，最终答案放在标签外。"
+            "请尽量使用中文输出，包括思考过程与最终答案。"
         ),
         metadata={"name": "系统提示词", "description": "用来描述智能体的角色和行为"},
     )
