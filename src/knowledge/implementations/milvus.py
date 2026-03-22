@@ -340,6 +340,18 @@ class MilvusKB(KnowledgeBase):
 
         except Exception as e:
             logger.error(f"Indexing failed for {file_id}: {e}")
+            logger.error(f"Indexing traceback for {file_id}:\n{traceback.format_exc()}")
+            if isinstance(e, UnicodeEncodeError):
+                obj_preview = e.object
+                if isinstance(obj_preview, str):
+                    start = max(0, e.start - 30)
+                    end = min(len(obj_preview), e.end + 30)
+                    obj_preview = obj_preview[start:end]
+                logger.error(
+                    "UnicodeEncodeError details: "
+                    f"encoding={e.encoding}, reason={e.reason}, start={e.start}, end={e.end}, "
+                    f"obj_preview={obj_preview!r}, filename={file_meta.get('filename')!r}, path={file_meta.get('path')!r}"
+                )
             async with self._metadata_lock:
                 self.files_meta[file_id]["status"] = FileStatus.ERROR_INDEXING
                 self.files_meta[file_id]["error"] = str(e)

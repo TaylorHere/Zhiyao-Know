@@ -229,6 +229,34 @@ class HuizhouImporter:
     def get_headers(self):
         """获取认证头"""
         return {"Authorization": f"Bearer {self.token}"}
+
+    async def kb_exists(self, kb_id: str) -> bool:
+        """检查知识库ID是否存在且可访问"""
+        if self.dry_run:
+            return True
+        if not kb_id:
+            return False
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(
+                f"{API_BASE_URL}/api/knowledge/databases/{kb_id}",
+                headers=self.get_headers(),
+            )
+        return resp.status_code == 200
+
+    async def ensure_valid_kb_id(self, kb_id: str, kb_name: str) -> str | None:
+        """
+        确保知识库ID有效。
+        若传入kb_id不存在，则按知识库名称重新查询最新ID。
+        """
+        if self.dry_run:
+            return kb_id
+        if kb_id and await self.kb_exists(kb_id):
+            return kb_id
+        print(f"      ⚠️  知识库ID失效: {kb_id}，按名称重新查询: {kb_name}")
+        refreshed_id = await self.get_kb_id(kb_name)
+        if refreshed_id:
+            print(f"      ✅ 已刷新知识库ID: {refreshed_id}")
+        return refreshed_id
     
     async def ensure_department_hierarchy(self, dept_path: list[str]) -> int | None:
         """
@@ -402,15 +430,39 @@ class HuizhouImporter:
                         return db.get("db_id")
         return None
     
-    async def upload_file(self, kb_id: str, file_path: str) -> tuple[str, str] | None:
-        """上传文件到知识库，返回 (MinIO路径, content_hash) 元组"""
+    async def get_file_meta_by_filename(self, kb_id: str, filename: str) -> dict | None:
+        """在知识库中按文件名查找文件元数据"""
+        if self.dry_run:
+            return None
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(
+                f"{API_BASE_URL}/api/knowledge/databases/{kb_id}",
+                headers=self.get_headers(),
+            )
+            if response.status_code != 200:
+                return None
+
+            data = response.json() or {}
+            files = data.get("files") or {}
+            for file_id, meta in files.items():
+                if meta.get("filename") == filename or meta.get("original_filename") == filename:
+                    return {
+                        "file_id": file_id,
+                        "status": meta.get("status"),
+                        "filename": meta.get("filename") or filename,
+                    }
+        return None
+
+    async def upload_file(self, kb_id: str, file_path: str) -> dict | None:
+        """上传文件到知识库，返回上传结果字典"""
         filename = os.path.basename(file_path)
         short_name = filename[:40] + "..." if len(filename) > 40 else filename
         print(f"      上传: {short_name}")
         
         if self.dry_run:
             print(f"        [DRY-RUN] 跳过上传")
-            return (f"minio://fake/{filename}", "fake_hash")
+            return {"kind": "uploaded", "minio_path": f"minio://fake/{filename}", "content_hash": "fake_hash"}
         
         try:
             file_size = os.path.getsize(file_path)
@@ -436,9 +488,21 @@ class HuizhouImporter:
                             content_hash = data.get("content_hash")
                             print(f"        ✅ 上传成功")
                             self.stats["files_uploaded"] += 1
-                            return (minio_path, content_hash)
+                            return {
+                                "kind": "uploaded",
+                                "minio_path": minio_path,
+                                "content_hash": content_hash,
+                                "filename": filename,
+                            }
                         elif response.status_code == 409:
-                            print(f"        ⚠️  文件已存在，跳过")
+                            existing = await self.get_file_meta_by_filename(kb_id, filename)
+                            if existing:
+                                print(
+                                    f"        ⚠️  文件已存在，加入补漏队列 "
+                                    f"(file_id={existing['file_id']}, status={existing['status']})"
+                                )
+                                return {"kind": "existing", **existing}
+                            print(f"        ⚠️  文件已存在，但未查到对应记录，跳过")
                             return None
                         else:
                             print(f"        ❌ 上传失败 (尝试 {attempt+1}/{max_retries}): {response.status_code} - {response.text[:200]}")
@@ -454,13 +518,61 @@ class HuizhouImporter:
             print(f"        ❌ 文件处理异常: {type(e).__name__}: {e}")
             self.stats["files_failed"] += 1
             return None
-    
-    async def add_documents_to_kb(self, kb_id: str, file_infos: list[tuple[str, str]]):
+
+    async def retry_existing_files(self, kb_id: str, existing_files: list[dict]):
+        """对已存在但失败状态的文件进行补漏（parse/index）"""
+        if self.dry_run or not existing_files:
+            return
+
+        parse_ids = []
+        index_ids = []
+        for item in existing_files:
+            file_id = item.get("file_id")
+            status = (item.get("status") or "").lower()
+            if not file_id:
+                continue
+            if status in {"uploaded", "error_parsing", "failed", "parsing"}:
+                parse_ids.append(file_id)
+            elif status in {"parsed", "error_indexing", "indexing", "done"}:
+                index_ids.append(file_id)
+
+        async with httpx.AsyncClient(timeout=120) as client:
+            if parse_ids:
+                resp = await client.post(
+                    f"{API_BASE_URL}/api/knowledge/databases/{kb_id}/documents/parse",
+                    headers=self.get_headers(),
+                    json=parse_ids,
+                )
+                if resp.status_code == 200:
+                    task_id = resp.json().get("task_id", "unknown")
+                    print(f"      ✅ 补漏解析任务已提交 (task_id: {task_id}, files={len(parse_ids)})")
+                else:
+                    print(f"      ❌ 补漏解析提交失败: {resp.text[:120]}")
+
+            # parse 后统一走 index（已 parsed / error_indexing / 本次parse的文件）
+            retry_index_ids = list(dict.fromkeys(index_ids + parse_ids))
+            if retry_index_ids:
+                resp = await client.post(
+                    f"{API_BASE_URL}/api/knowledge/databases/{kb_id}/documents/index",
+                    headers=self.get_headers(),
+                    json={
+                        "file_ids": retry_index_ids,
+                        "params": {"chunk_size": 1000, "chunk_overlap": 200, "qa_separator": ""},
+                    },
+                )
+                if resp.status_code == 200:
+                    task_id = resp.json().get("task_id", "unknown")
+                    print(f"      ✅ 补漏入库任务已提交 (task_id: {task_id}, files={len(retry_index_ids)})")
+                else:
+                    print(f"      ❌ 补漏入库提交失败: {resp.text[:120]}")
+
+    async def add_documents_to_kb(self, kb_id: str, kb_name: str, file_infos: list[dict]):
         """将上传的文件添加到知识库并入库
         
         Args:
             kb_id: 知识库ID
-            file_infos: [(minio_path, content_hash), ...] 列表
+            kb_name: 知识库名称（用于ID失效时重查）
+            file_infos: 上传结果列表
         """
         if not file_infos:
             return
@@ -474,30 +586,72 @@ class HuizhouImporter:
         # 构建 content_hashes 映射
         items = []
         content_hashes = {}
-        for minio_path, content_hash in file_infos:
-            items.append(minio_path)
-            content_hashes[minio_path] = content_hash
+        existing_files = []
+        for item in file_infos:
+            if item.get("kind") == "uploaded":
+                minio_path = item.get("minio_path")
+                content_hash = item.get("content_hash")
+                if minio_path and content_hash:
+                    items.append(minio_path)
+                    content_hashes[minio_path] = content_hash
+            elif item.get("kind") == "existing":
+                existing_files.append(item)
         
         try:
+            kb_id = await self.ensure_valid_kb_id(kb_id, kb_name)
+            if not kb_id:
+                print(f"      ❌ 入库失败：知识库不存在 (name={kb_name})")
+                return
+
             async with httpx.AsyncClient(timeout=600) as client:
-                response = await client.post(
-                    f"{API_BASE_URL}/api/knowledge/databases/{kb_id}/documents",
-                    headers=self.get_headers(),
-                    json={
-                        "items": items,
-                        "params": {
-                            "auto_index": True,
-                            "content_hashes": content_hashes
+                response = None
+                if items:
+                    response = await client.post(
+                        f"{API_BASE_URL}/api/knowledge/databases/{kb_id}/documents",
+                        headers=self.get_headers(),
+                        json={
+                            "items": items,
+                            "params": {
+                                "auto_index": True,
+                                "content_hashes": content_hashes
+                            }
                         }
-                    }
-                )
+                    )
                 
-                if response.status_code == 200:
+                if response is not None and response.status_code == 200:
                     data = response.json()
                     task_id = data.get("task_id", "unknown")
                     print(f"      ✅ 入库任务已提交 (task_id: {task_id})")
-                else:
+                elif response is not None and (response.status_code == 404 or "not found" in response.text.lower()):
+                    # 处理数据库ID漂移：按名称重查后重试一次
+                    print(f"      ⚠️  入库返回 not found，尝试刷新知识库ID后重试...")
+                    refreshed_kb_id = await self.ensure_valid_kb_id("", kb_name)
+                    if refreshed_kb_id and refreshed_kb_id != kb_id:
+                        retry_resp = await client.post(
+                            f"{API_BASE_URL}/api/knowledge/databases/{refreshed_kb_id}/documents",
+                            headers=self.get_headers(),
+                            json={
+                                "items": items,
+                                "params": {
+                                    "auto_index": True,
+                                    "content_hashes": content_hashes
+                                }
+                            }
+                        )
+                        if retry_resp.status_code == 200:
+                            data = retry_resp.json()
+                            task_id = data.get("task_id", "unknown")
+                            print(f"      ✅ 重试入库成功 (task_id: {task_id})")
+                            await self.retry_existing_files(refreshed_kb_id, existing_files)
+                            return
+                        print(f"      ❌ 重试入库失败: {retry_resp.text[:100]}")
+                    else:
+                        print(f"      ❌ 无法刷新到有效知识库ID，重试终止")
+                elif response is not None:
                     print(f"      ❌ 入库失败: {response.text[:100]}")
+
+                if existing_files:
+                    await self.retry_existing_files(kb_id, existing_files)
         except Exception as e:
             print(f"      ❌ 入库异常: {e}")
     
@@ -576,6 +730,11 @@ class HuizhouImporter:
             if not kb_id:
                 print(f"  ⚠️  跳过（知识库创建失败）")
                 continue
+
+            kb_id = await self.ensure_valid_kb_id(kb_id, kb_name)
+            if not kb_id:
+                print(f"  ⚠️  跳过（知识库ID失效且无法刷新）")
+                continue
             
             self.kb_id_cache[kb_name] = kb_id
             self.stats["knowledge_bases"] += 1
@@ -592,7 +751,7 @@ class HuizhouImporter:
             
             # 添加文档并入库
             if file_infos:
-                await self.add_documents_to_kb(kb_id, file_infos)
+                await self.add_documents_to_kb(kb_id, kb_name, file_infos)
         
         # 4. 完成
         print("\n" + "="*60)
