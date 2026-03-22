@@ -503,7 +503,7 @@ def parse_iso_datetime(dt: str) -> datetime | None:
 
 def dump_request_race_track_svg(results: list[RequestResult], out_svg: Path) -> None:
     rows: list[tuple[RequestResult, datetime, datetime]] = []
-    for result in sorted(results, key=lambda x: x.index):
+    for result in results:
         start_dt = parse_iso_datetime(result.request_started_at)
         end_dt = parse_iso_datetime(result.request_ended_at)
         if start_dt is None or end_dt is None:
@@ -511,6 +511,7 @@ def dump_request_race_track_svg(results: list[RequestResult], out_svg: Path) -> 
         if end_dt < start_dt:
             end_dt = start_dt
         rows.append((result, start_dt, end_dt))
+    rows.sort(key=lambda item: (item[1], item[0].index))
 
     if not rows:
         out_svg.write_text(
@@ -858,7 +859,7 @@ def dump_markdown_report(
         "",
         f"![请求赛道图]({race_track_svg_name})",
         "",
-        "说明：图中的横轴时间来自每个请求的 `request_started_at` 和 `request_ended_at`。",
+        "说明：图中的横轴时间来自每个请求的 `request_started_at` 和 `request_ended_at`，纵轴任务按 `request_started_at` 升序排列。",
         "",
         "## 延迟统计（仅成功请求）",
         "",
