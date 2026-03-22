@@ -12,7 +12,14 @@ client = OpenAI(
 chat_response = client.chat.completions.create(
     model="llama",
     messages=[
-        {"role": "system", "content": "You are a helpful assistant."},
+        {
+            "role": "system",
+            "content": (
+                "You are a helpful assistant. "
+                "If you output a reasoning process, you must wrap it with <think> and </think>, "
+                "and keep the final answer outside the tags."
+            ),
+        },
         {"role": "user", "content": "Tell me a joke."},
     ],
 )

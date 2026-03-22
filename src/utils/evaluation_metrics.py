@@ -55,6 +55,7 @@ class AnswerMetrics:
             return {"score": 0.0, "reasoning": "无参考答案"}
 
         prompt = textwrap.dedent(f"""你是一个公正的评判者，请评估AI生成的答案相对于标准答案的准确性。
+            若输出思考过程，必须使用 <think>...</think> 标签包裹，最终 JSON 结果放在标签外。
 
             问题：{query}
 
