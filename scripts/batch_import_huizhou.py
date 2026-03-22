@@ -42,8 +42,8 @@ API_BASE_URL = os.getenv("YUXI_API_BASE_URL", "http://127.0.0.1:5050")
 USERNAME = os.getenv("YUXI_TEST_USERNAME") or os.getenv("YUXI_SUPER_ADMIN_NAME") or "admin"
 PASSWORD = os.getenv("YUXI_TEST_PASSWORD") or os.getenv("YUXI_SUPER_ADMIN_PASSWORD") or "Admin@123456"
 PRESET_TOKEN = os.getenv("YUXI_TEST_TOKEN") or os.getenv("YUXI_ACCESS_TOKEN")
-HTTP_TIMEOUT = float(os.getenv("YUXI_HTTP_TIMEOUT", "30"))
-LOGIN_RETRIES = int(os.getenv("YUXI_LOGIN_RETRIES", "3"))
+HTTP_TIMEOUT = float(os.getenv("YUXI_HTTP_TIMEOUT", "6000"))
+LOGIN_RETRIES = int(os.getenv("YUXI_LOGIN_RETRIES", "20"))
 SOURCE_DIR = "/mnt/usb2/4.文件汇总"
 
 # 支持的文件类型
