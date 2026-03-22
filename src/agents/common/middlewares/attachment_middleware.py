@@ -40,7 +40,8 @@ def _build_attachment_prompt(attachments: Sequence[dict]) -> str | None:
         return None
 
     instructions = (
-        "以下为用户提供的附件内容，请综合这些文件与用户的新问题进行回答。如附件与问题无关，可忽略附件内容：\n\n"
+        "以下为用户提供的附件内容，请综合这些文件与用户的新问题进行回答。如附件与问题无关，可忽略附件内容。"
+        "若输出思考过程，必须使用 <think>...</think> 标签包裹，最终答案放在标签外：\n\n"
     )
     return instructions + "\n\n".join(chunks)
 

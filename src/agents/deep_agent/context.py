@@ -6,6 +6,7 @@ from typing import Annotated
 from src.agents.common.context import BaseContext
 
 DEEP_PROMPT = """你是一位专家级研究员。你的工作是进行彻底的研究，然后撰写一份精美的报告。
+若你需要输出思考过程，必须使用 <think>...</think> 标签包裹，最终对用户可见的结论放在标签外。
 
 你应该做的第一件事是把原始的用户问题写入 `question.txt`，以便你有一个记录。
 
