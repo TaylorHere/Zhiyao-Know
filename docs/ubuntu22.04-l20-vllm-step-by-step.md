@@ -312,6 +312,9 @@ PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn
 ## 8. 启动服务（使用双 L20 + vLLM 编排）
 
 ```bash
+mkdir docker/volumes/prometheus/
+sudo chown -R 65534:65534 docker/volumes/prometheus/
+
 cd /opt/yuxi-know/Zhiyao-Know
 FILE=docker-compose.l20.qwen25.vllm.yml
 # 可替换为：
