@@ -29,6 +29,10 @@ class PostgresManager(metaclass=SingletonMeta):
 
     # 知识库 PostgreSQL URL 环境变量名
     KB_DATABASE_URL_ENV = "POSTGRES_URL"
+    POOL_SIZE_ENV = "POSTGRES_POOL_SIZE"
+    MAX_OVERFLOW_ENV = "POSTGRES_MAX_OVERFLOW"
+    POOL_TIMEOUT_ENV = "POSTGRES_POOL_TIMEOUT"
+    POOL_RECYCLE_ENV = "POSTGRES_POOL_RECYCLE"
 
     def __init__(self):
         self.async_engine = None
@@ -49,13 +53,21 @@ class PostgresManager(metaclass=SingletonMeta):
             return
 
         try:
+            pool_size = int(os.getenv(self.POOL_SIZE_ENV, "20"))
+            max_overflow = int(os.getenv(self.MAX_OVERFLOW_ENV, "20"))
+            pool_timeout = int(os.getenv(self.POOL_TIMEOUT_ENV, "30"))
+            pool_recycle = int(os.getenv(self.POOL_RECYCLE_ENV, "1800"))
+
             # 创建异步 SQLAlchemy 引擎
             self.async_engine = create_async_engine(
                 db_url,
                 json_serializer=lambda obj: json.dumps(obj, ensure_ascii=False),
                 json_deserializer=json.loads,
+                pool_size=pool_size,
+                max_overflow=max_overflow,
+                pool_timeout=pool_timeout,
                 pool_pre_ping=True,
-                pool_recycle=1800,
+                pool_recycle=pool_recycle,
             )
 
             # 创建异步会话工厂
@@ -67,6 +79,11 @@ class PostgresManager(metaclass=SingletonMeta):
 
             self._initialized = True
             logger.info(f"PostgreSQL manager initialized for knowledge base: {db_url.split('@')[0]}://***")
+            logger.info(
+                "PostgreSQL pool settings applied: "
+                f"pool_size={pool_size}, max_overflow={max_overflow}, "
+                f"pool_timeout={pool_timeout}, pool_recycle={pool_recycle}"
+            )
         except Exception as e:
             logger.error(f"Failed to initialize PostgreSQL manager: {e}")
             # 不抛出异常，允许应用启动，但在使用时会报错

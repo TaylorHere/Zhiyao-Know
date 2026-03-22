@@ -7,62 +7,176 @@ services:
       - VLLM_CHAT_BASE_URL=${VLLM_CHAT_BASE_URL:-http://litellm-gateway:8010/queue}
       - VLLM_EMBED_BASE_URL=${VLLM_EMBED_BASE_URL:-http://litellm-gateway:8010/v1/embeddings}
       - VLLM_RERANK_BASE_URL=${VLLM_RERANK_BASE_URL:-http://litellm-gateway:8010/v1/rerank}
+    command:
+      - /bin/sh
+      - -c
+      - >
+        WORKERS=$(( $(nproc) / 2 )); if [ "$$WORKERS" -lt 1 ]; then WORKERS=1; fi;
+        exec uvicorn server.main:app --host 0.0.0.0 --port 5050 --workers "$$WORKERS" --loop uvloop --http httptools
 
+    shm_size: 8g
+    ipc: host
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
   crawler:
     extends:
       file: docker-compose.yaml
       service: crawler
 
+    shm_size: 8g
+    ipc: host
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
   crawler-worker:
     extends:
       file: docker-compose.yaml
       service: crawler-worker
 
+    shm_size: 8g
+    ipc: host
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
   app-redis:
     extends:
       file: docker-compose.yaml
       service: app-redis
 
+    shm_size: 8g
+    ipc: host
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
   redis-exporter:
     extends:
       file: docker-compose.yaml
       service: redis-exporter
 
+    shm_size: 8g
+    ipc: host
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
   web:
     extends:
       file: docker-compose.yaml
       service: web
 
+    shm_size: 8g
+    ipc: host
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
   graph:
     extends:
       file: docker-compose.yaml
       service: graph
 
+    shm_size: 8g
+    ipc: host
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
   etcd:
     extends:
       file: docker-compose.yaml
       service: etcd
 
+    shm_size: 8g
+    ipc: host
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
   minio:
     extends:
       file: docker-compose.yaml
       service: minio
 
+    shm_size: 8g
+    ipc: host
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
   milvus:
     extends:
       file: docker-compose.yaml
       service: milvus
 
+    shm_size: 8g
+    ipc: host
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
   postgres:
     extends:
       file: docker-compose.yaml
       service: postgres
 
+    shm_size: 8g
+    ipc: host
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
   postgres-exporter:
     extends:
       file: docker-compose.yaml
       service: postgres-exporter
 
+    shm_size: 8g
+    ipc: host
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
   prometheus:
     extends:
       file: docker-compose.yaml
@@ -71,6 +185,15 @@ services:
       - ./docker/prometheus/prometheus.l20.qwen25.yml:/etc/prometheus/prometheus.yml:ro
       - ./docker/volumes/prometheus:/prometheus
 
+    shm_size: 8g
+    ipc: host
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
   litellm-gateway:
     build:
       context: .
@@ -104,10 +227,19 @@ services:
     depends_on:
       - vllm-qwen25-72b-awq
       - vllm-qwen3-embedding-cpu
-      - vllm-qwen3-rerank-cpu
+      - vllm-bge-reranker-v2-m3-cpu
       - app-redis
     networks:
       - app-network
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
+    shm_size: 8g
+    ipc: host
     restart: unless-stopped
 
   vllm-qwen25-72b-awq:
@@ -144,7 +276,12 @@ services:
       - "8000:8000"
     ipc: host
     ulimits:
-      memlock: -1
+      nofile:
+        soft: 1048576
+        hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
       stack: 67108864
     deploy:
       resources:
@@ -161,6 +298,7 @@ services:
       start_period: 300s
     networks:
       - app-network
+    shm_size: 8g
     restart: unless-stopped
 
   vllm-qwen3-embedding-cpu:
@@ -193,16 +331,25 @@ services:
       start_period: 120s
     networks:
       - app-network
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
+    shm_size: 8g
+    ipc: host
     restart: unless-stopped
 
-  vllm-qwen3-rerank-cpu:
+  vllm-bge-reranker-v2-m3-cpu:
     image: ${VLLM_OPENAI_CPU_IMAGE:-docker.m.daocloud.io/vllm/vllm-openai-cpu:latest}
-    container_name: vllm-qwen3-rerank-cpu
+    container_name: vllm-bge-reranker-v2-m3-cpu
     command:
       - --model
-      - /models/Qwen/Qwen3-Reranker-0.6B
+      - /models/BAAI/bge-reranker-v2-m3
       - --served-model-name
-      - qwen3-rerank
+      - bge-reranker-v2-m3
       - --host
       - 0.0.0.0
       - --port
@@ -225,6 +372,15 @@ services:
       start_period: 120s
     networks:
       - app-network
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
+    shm_size: 8g
+    ipc: host
     restart: unless-stopped
 
   paddlex:
@@ -259,6 +415,15 @@ services:
       start_period: 90s
     networks:
       - app-network
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
+    shm_size: 8g
+    ipc: host
     restart: unless-stopped
 
 networks:

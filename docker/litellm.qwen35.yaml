@@ -4,8 +4,8 @@ model_list:
       model: openai/Qwen3.5-35B-A3B-FP8
       api_base: http://vllm-qwen35-35b-a3b-fp8:8000/v1
       api_key: no_api_key
-      rpm: 72
-      tpm: 180000
+      rpm: 4000
+      tpm: 360000
 
   - model_name: Qwen3-Embedding-0.6B
     litellm_params:
@@ -18,7 +18,7 @@ model_list:
   - model_name: bge-reranker-v2-m3
     litellm_params:
       model: openai/bge-reranker-v2-m3
-      api_base: http://vllm-qwen3-rerank-cpu:8002/v1
+      api_base: http://vllm-bge-reranker-v2-m3-cpu:8002/v1
       api_key: no_api_key
       rpm: 120
       tpm: 120000

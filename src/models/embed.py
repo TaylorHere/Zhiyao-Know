@@ -159,8 +159,8 @@ class OtherEmbedding(BaseEmbeddingModel):
 
     def build_payload(self, message: list[str] | str) -> dict:
         payload = {"model": self.model, "input": message}
-        # LiteLLM/vLLM embeddings may require explicit encoding_format.
         if isinstance(self.model_id, str) and self.model_id.startswith("vllm/"):
+            # vLLM (through LiteLLM proxy) requires a non-null encoding_format.
             payload["encoding_format"] = "float"
         return payload
 

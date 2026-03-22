@@ -53,7 +53,7 @@ LOCAL_VLLM_EMBED_BASE_URL = os.getenv("VLLM_EMBED_BASE_URL", "http://localhost:8
 LOCAL_VLLM_EMBED_MODEL = os.getenv("VLLM_EMBED_MODEL", "Qwen3-Embedding-0.6B")
 
 LOCAL_VLLM_RERANK_BASE_URL = os.getenv("VLLM_RERANK_BASE_URL", "http://localhost:8002/v1/rerank")
-LOCAL_VLLM_RERANK_MODEL = os.getenv("VLLM_RERANK_MODEL", "qwen3-rerank")
+LOCAL_VLLM_RERANK_MODEL = os.getenv("VLLM_RERANK_MODEL", "bge-reranker-v2-m3")
 
 
 # ============================================================
@@ -254,8 +254,8 @@ DEFAULT_RERANKERS: dict[str, RerankerInfo] = {
         base_url="https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank",
         api_key="DASHSCOPE_API_KEY",
     ),
-    "dashscope/qwen3-rerank": RerankerInfo(
-        name="qwen3-rerank",
+    "dashscope/bge-reranker-v2-m3": RerankerInfo(
+        name="bge-reranker-v2-m3",
         base_url="https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank",
         api_key="DASHSCOPE_API_KEY",
     ),

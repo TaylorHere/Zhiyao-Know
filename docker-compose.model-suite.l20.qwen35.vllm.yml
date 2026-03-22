@@ -34,7 +34,12 @@ services:
       - "8000:8000"
     ipc: host
     ulimits:
-      memlock: -1
+      nofile:
+        soft: 1048576
+        hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
       stack: 67108864
     deploy:
       resources:
@@ -51,6 +56,7 @@ services:
       start_period: 300s
     networks:
       - app-network
+    shm_size: 8g
     restart: unless-stopped
 
   vllm-qwen3-embedding-cpu:
@@ -86,11 +92,20 @@ services:
       start_period: 120s
     networks:
       - app-network
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
+    shm_size: 8g
+    ipc: host
     restart: unless-stopped
 
-  vllm-qwen3-rerank-cpu:
+  vllm-bge-reranker-v2-m3-cpu:
     image: ${VLLM_OPENAI_CPU_IMAGE:-docker.m.daocloud.io/vllm/vllm-openai-cpu:latest}
-    container_name: vllm-qwen3-rerank-cpu
+    container_name: vllm-bge-reranker-v2-m3-cpu
     command:
       - --model
       - /models/BAAI/bge-reranker-v2-m3
@@ -121,6 +136,15 @@ services:
       start_period: 120s
     networks:
       - app-network
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
+    shm_size: 8g
+    ipc: host
     restart: unless-stopped
 
   litellm-gateway:
@@ -151,9 +175,18 @@ services:
     depends_on:
       - vllm-qwen35-35b-a3b-fp8
       - vllm-qwen3-embedding-cpu
-      - vllm-qwen3-rerank-cpu
+      - vllm-bge-reranker-v2-m3-cpu
     networks:
       - app-network
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
+    shm_size: 8g
+    ipc: host
     restart: unless-stopped
 
   prometheus:
@@ -174,6 +207,15 @@ services:
       - "9090:9090"
     networks:
       - app-network
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
+    shm_size: 8g
+    ipc: host
     restart: unless-stopped
 
 networks:

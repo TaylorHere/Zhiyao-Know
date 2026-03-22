@@ -37,7 +37,7 @@ cp .env.template .env.prod
 - `VLLM_EMBED_BASE_URL`（默认：`http://host.docker.internal:8001/v1/embeddings`）
 - `VLLM_EMBED_MODEL`（默认：`Qwen3-Embedding-0.6B`）
 - `VLLM_RERANK_BASE_URL`（默认：`http://host.docker.internal:8002/v1/rerank`）
-- `VLLM_RERANK_MODEL`（默认：`qwen3-rerank`）
+- `VLLM_RERANK_MODEL`（默认：`bge-reranker-v2-m3`）
 
 ### 1.1 中国大陆镜像源建议
 
@@ -132,7 +132,7 @@ bash scripts/offline_bundle.sh import \
 - Qwen2.5-72B-Instruct-AWQ（vLLM，GPU 双卡）
 - 或 Qwen3.5-35B-A3B-FP8（vLLM，GPU 双卡）
 - Qwen3-Embedding-0.6B（vLLM，CPU）
-- Qwen3-Reranker-0.6B（vLLM，CPU）
+- BAAI/bge-reranker-v2-m3（vLLM，CPU）
 - PaddleOCR（CPU，仅整套 compose）
 
 请参考专用 Step by Step 文档：
