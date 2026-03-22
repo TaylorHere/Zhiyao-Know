@@ -736,6 +736,7 @@ def dump_concurrency_latency_curve_svg(
     min_concurrency = min(int(row["concurrency"]) for row in rows)
     max_concurrency = max(int(row["concurrency"]) for row in rows)
     max_latency = max(max(all_latency_values), 1.0)
+    concurrency_values = sorted({int(row["concurrency"]) for row in rows})
 
     left = 80
     right = 40
@@ -778,8 +779,16 @@ def dump_concurrency_latency_curve_svg(
             f'<text class="axis" x="{left - 8}" y="{y + 4:.2f}" text-anchor="end">{value:.1f}</text>'
         )
 
-    for row in rows:
-        c = int(row["concurrency"])
+    max_x_labels = 8
+    if len(concurrency_values) <= max_x_labels:
+        x_tick_values = concurrency_values
+    else:
+        stride = max(1, (len(concurrency_values) - 1) // (max_x_labels - 1))
+        x_tick_values = concurrency_values[::stride]
+        if x_tick_values[-1] != concurrency_values[-1]:
+            x_tick_values.append(concurrency_values[-1])
+
+    for c in x_tick_values:
         x = x_for(c)
         parts.append(f'<line x1="{x:.2f}" y1="{top}" x2="{x:.2f}" y2="{top + plot_h}" stroke="#fafafa"/>')
         parts.append(
@@ -841,6 +850,7 @@ def dump_concurrency_ttft_curve_svg(sweep_rows: list[dict[str, Any]], out_svg: P
     max_concurrency = max(c for c, _ in points)
     max_ttft = max(max(v for _, v in points), 1.0)
     best_c, best_ttft = min(points, key=lambda item: (item[1], item[0]))
+    concurrency_values = sorted({c for c, _ in points})
 
     left = 80
     right = 40
@@ -883,7 +893,16 @@ def dump_concurrency_ttft_curve_svg(sweep_rows: list[dict[str, Any]], out_svg: P
             f'<text class="axis" x="{left - 8}" y="{y + 4:.2f}" text-anchor="end">{value:.1f}</text>'
         )
 
-    for c, _ in points:
+    max_x_labels = 8
+    if len(concurrency_values) <= max_x_labels:
+        x_tick_values = concurrency_values
+    else:
+        stride = max(1, (len(concurrency_values) - 1) // (max_x_labels - 1))
+        x_tick_values = concurrency_values[::stride]
+        if x_tick_values[-1] != concurrency_values[-1]:
+            x_tick_values.append(concurrency_values[-1])
+
+    for c in x_tick_values:
         x = x_for(c)
         parts.append(f'<line x1="{x:.2f}" y1="{top}" x2="{x:.2f}" y2="{top + plot_h}" stroke="#fafafa"/>')
         parts.append(
