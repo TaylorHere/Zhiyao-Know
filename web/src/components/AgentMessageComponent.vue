@@ -257,12 +257,21 @@ const validToolCalls = computed(() => {
 const parsedData = computed(() => {
   // Start with default values from the prop to avoid mutation.
   let content = props.message.content.trim() || ''
-  let reasoning_content = props.message.additional_kwargs?.reasoning_content || ''
+  let reasoning_content =
+    props.message.additional_kwargs?.reasoning_content ||
+    props.message.reasoning_content ||
+    props.message.extra_metadata?.additional_kwargs?.reasoning_content ||
+    props.message.extra_metadata?.reasoning_content ||
+    ''
 
   if (reasoning_content) {
-    return {
-      content,
-      reasoning_content
+    const normalizedReasoning = reasoning_content.trim()
+    if (normalizedReasoning) {
+      if (content === normalizedReasoning) {
+        content = ''
+      } else if (content.startsWith(normalizedReasoning)) {
+        content = content.slice(normalizedReasoning.length).trim()
+      }
     }
   }
 
