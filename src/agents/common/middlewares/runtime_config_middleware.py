@@ -12,6 +12,12 @@ from src.agents.common.tools import get_kb_based_tools, get_buildin_tools
 from src.services.mcp_service import get_enabled_mcp_tools
 from src.utils.logging_config import logger
 
+CHINESE_OUTPUT_GUARD_PROMPT = (
+    "【语言约束】你必须全程使用简体中文输出，包括推理内容与最终答复。"
+    "除非用户明确要求英文或翻译任务，否则禁止输出英文句子。"
+    "若必须出现英文缩写或术语（如 API、SQL、HTTP、ID），请先写中文，再在括号内补充英文。"
+)
+
 
 def _is_system_message(msg: Any) -> bool:
     if isinstance(msg, dict):
@@ -21,12 +27,25 @@ def _is_system_message(msg: Any) -> bool:
     return msg_type == "system"
 
 
+def _is_user_message(msg: Any) -> bool:
+    if isinstance(msg, dict):
+        role = msg.get("role") or msg.get("type")
+        return role in {"user", "human"}
+    msg_type = getattr(msg, "type", None) or getattr(msg, "role", None)
+    return msg_type in {"user", "human"}
+
+
 def _get_message_content(msg: Any) -> str | None:
     if isinstance(msg, dict):
         content = msg.get("content")
         return str(content) if content is not None else None
     content = getattr(msg, "content", None)
     return str(content) if content is not None else None
+
+
+def _has_language_guard_prompt(msg: Any) -> bool:
+    content = _get_message_content(msg)
+    return isinstance(content, str) and "【语言约束】" in content
 
 
 def _safe_preview(text: str | None, limit: int = 300) -> str:
@@ -168,8 +187,19 @@ def _trim_oldest_non_system_messages(messages: list[Any], drop_count: int) -> li
         else:
             non_systems.append(msg)
 
-    # 至少保留最近一轮问答（2条）避免语义断裂
-    min_keep_non_system = 2
+    # 必须保留最新 user/human 消息，避免下游模型报 "No user query found in messages"
+    last_user_idx = -1
+    for i in range(len(non_systems) - 1, -1, -1):
+        if _is_user_message(non_systems[i]):
+            last_user_idx = i
+            break
+
+    # 没有 user/human 的请求，不做裁剪（例如某些工具链内部阶段）
+    if last_user_idx < 0:
+        return messages
+
+    # 至少保留：最新 user/human + 其后一条消息（如果存在）
+    min_keep_non_system = max(1, len(non_systems) - last_user_idx)
     if len(non_systems) <= min_keep_non_system:
         return messages
 
@@ -180,6 +210,10 @@ def _trim_oldest_non_system_messages(messages: list[Any], drop_count: int) -> li
 
 def _trim_messages_to_token_budget(messages: list[Any], budget: int) -> tuple[list[Any], int]:
     current = list(messages)
+    # 没有 user/human 时不做前置裁剪，避免破坏工具链内部调用
+    if not any(_is_user_message(msg) for msg in current):
+        return current, _estimate_messages_tokens(current)
+
     estimated = _estimate_messages_tokens(current)
     if estimated <= budget:
         return current, estimated
@@ -248,6 +282,10 @@ class RuntimeConfigMiddleware(AgentMiddleware):
 
         # Keep create_agent(system_prompt=...) as the single source of system prompt.
         # Runtime middleware only normalizes ordering for vLLM compatibility.
+        has_language_guard = any(_has_language_guard_prompt(msg) for msg in existing_systems)
+        if not has_language_guard:
+            existing_systems.append({"role": "system", "content": CHINESE_OUTPUT_GUARD_PROMPT})
+
         messages = [*existing_systems, *remaining]
 
         # 前置裁剪：调用模型前先按 token 预算裁剪最旧历史消息，减少超限重试。
@@ -288,9 +326,8 @@ class RuntimeConfigMiddleware(AgentMiddleware):
             "messages_preview": [_message_snapshot(m) for m in messages[:6]],
         }
 
-        # Always log request snapshot before calling model so 4xx cases are observable
-        # even if lower layers handle/retry without bubbling an exception.
-        logger.warning(f"RuntimeConfigMiddleware model call request: {debug_snapshot}")
+        # Keep request snapshot for troubleshooting, but avoid high-volume warning logs in production.
+        logger.debug(f"RuntimeConfigMiddleware model call request: {debug_snapshot}")
 
         current_request = request
         current_messages = list(messages)
@@ -301,9 +338,10 @@ class RuntimeConfigMiddleware(AgentMiddleware):
         for attempt in range(len(trim_drop_steps) + 1):
             try:
                 response = await handler(current_request)
-                logger.warning(
+                # Do not log full response payload; large model outputs can flood logs and block streaming.
+                logger.debug(
                     "RuntimeConfigMiddleware model call response: "
-                    f"{{'response_type': '{type(response).__name__}', 'response_preview': '{_safe_repr(response)}'}}"
+                    f"{{'response_type': '{type(response).__name__}'}}"
                 )
                 return response
             except Exception as e:

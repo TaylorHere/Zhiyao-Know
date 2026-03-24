@@ -108,8 +108,8 @@ class LightRagKB(KnowledgeBase):
         # 兼容直接放在 metadata 下的 language
         if isinstance(metadata.get("language"), str) and metadata.get("language"):
             addon_params.setdefault("language", metadata.get("language"))
-        # 默认语言从环境变量读取，默认 English
-        addon_params.setdefault("language", os.getenv("SUMMARY_LANGUAGE") or "English")
+        # 默认语言从环境变量读取，纯中文环境下默认 Chinese
+        addon_params.setdefault("language", os.getenv("SUMMARY_LANGUAGE") or "Chinese")
 
         # 创建工作目录
         working_dir = os.path.join(self.work_dir, db_id)
