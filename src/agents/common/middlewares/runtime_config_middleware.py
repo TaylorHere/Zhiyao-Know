@@ -20,9 +20,10 @@ CHINESE_OUTPUT_GUARD_PROMPT = (
 
 
 def _is_system_like_role(role: Any) -> bool:
-    if not isinstance(role, str):
+    if role is None:
         return False
-    return role.lower() in {"system", "developer"}
+    role_text = str(role).strip().lower()
+    return role_text in {"system", "developer"}
 
 
 def _is_system_message(msg: Any) -> bool:
@@ -35,7 +36,17 @@ def _is_system_message(msg: Any) -> bool:
     if _is_system_like_role(msg_type):
         return True
     # Fallback for message classes that don't expose role/type directly.
-    return msg.__class__.__name__.lower().startswith("system")
+    class_name = msg.__class__.__name__.lower()
+    if "system" in class_name or "developer" in class_name:
+        return True
+    # Some wrappers store role in extra/additional kwargs.
+    additional_kwargs = getattr(msg, "additional_kwargs", None)
+    if isinstance(additional_kwargs, dict) and _is_system_like_role(additional_kwargs.get("role")):
+        return True
+    extra = getattr(msg, "extra", None)
+    if isinstance(extra, dict) and _is_system_like_role(extra.get("role")):
+        return True
+    return False
 
 
 def _is_user_message(msg: Any) -> bool:
@@ -71,6 +82,34 @@ def _partition_messages_system_first(messages: list[Any]) -> tuple[list[Any], li
         else:
             remaining.append(msg)
     return systems, remaining
+
+
+def _message_role_label(msg: Any) -> str:
+    if isinstance(msg, dict):
+        role = msg.get("role") or msg.get("type")
+        if role is not None:
+            return str(role)
+    if isinstance(msg, (tuple, list)) and len(msg) >= 1:
+        return str(msg[0])
+    role = getattr(msg, "role", None) or getattr(msg, "type", None)
+    if role is not None:
+        return str(role)
+    additional_kwargs = getattr(msg, "additional_kwargs", None)
+    if isinstance(additional_kwargs, dict) and additional_kwargs.get("role") is not None:
+        return str(additional_kwargs.get("role"))
+    return msg.__class__.__name__
+
+
+def _system_out_of_prefix_positions(messages: list[Any]) -> list[int]:
+    positions: list[int] = []
+    seen_non_system = False
+    for idx, msg in enumerate(messages):
+        if _is_system_message(msg):
+            if seen_non_system:
+                positions.append(idx)
+        else:
+            seen_non_system = True
+    return positions
 
 
 def _safe_preview(text: str | None, limit: int = 300) -> str:
@@ -309,6 +348,14 @@ class RuntimeConfigMiddleware(AgentMiddleware):
         # Final safeguard: re-partition once more to tolerate unrecognized message wrappers.
         systems2, remaining2 = _partition_messages_system_first(messages)
         messages = [*systems2, *remaining2]
+        out_of_prefix_positions = _system_out_of_prefix_positions(messages)
+        if out_of_prefix_positions:
+            logger.warning(
+                "Detected non-prefix system/developer messages before model call, "
+                f"positions={out_of_prefix_positions}. Forcing reorder again."
+            )
+            s3, r3 = _partition_messages_system_first(messages)
+            messages = [*s3, *r3]
 
         # 前置裁剪：调用模型前先按 token 预算裁剪最旧历史消息，减少超限重试。
         token_budget = _get_input_token_budget()
@@ -346,6 +393,8 @@ class RuntimeConfigMiddleware(AgentMiddleware):
             "estimated_tokens": estimated_tokens_after,
             "token_budget": token_budget,
             "messages_preview": [_message_snapshot(m) for m in messages[:6]],
+            "message_roles": [f"{idx}:{_message_role_label(m)}" for idx, m in enumerate(messages[:80])],
+            "system_out_of_prefix_positions": _system_out_of_prefix_positions(messages),
         }
 
         # Keep request snapshot for troubleshooting, but avoid high-volume warning logs in production.
