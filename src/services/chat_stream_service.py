@@ -223,6 +223,7 @@ async def stream_agent_chat(
     db,
 ) -> AsyncIterator[bytes]:
     start_time = asyncio.get_event_loop().time()
+    finished_sent = False
 
     def make_chunk(content=None, **kwargs):
         return (
@@ -414,6 +415,7 @@ async def stream_agent_chat(
         if agent_state:
             yield make_chunk(status="agent_state", agent_state=agent_state, meta=meta)
 
+        finished_sent = True
         yield make_chunk(status="finished", meta=meta)
 
         await save_messages_from_langgraph_state(
@@ -425,6 +427,10 @@ async def stream_agent_chat(
 
     except (asyncio.CancelledError, ConnectionError) as e:
         logger.warning(f"Client disconnected, cancelling stream: {e}")
+
+        # finished 已经发给前端后，连接在收尾阶段断开属于正常场景，不应再追加 interrupted 错误消息。
+        if finished_sent:
+            return
 
         async def save_cleanup():
             nonlocal full_msg

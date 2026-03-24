@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import os
 from collections.abc import Callable
 from typing import Any
 
@@ -76,6 +78,134 @@ def _extract_llm_error_snapshot(e: Exception) -> dict[str, Any]:
     }
 
 
+def _get_token_encoder():
+    try:
+        import tiktoken
+
+        try:
+            return tiktoken.get_encoding("o200k_base")
+        except Exception:
+            return tiktoken.get_encoding("cl100k_base")
+    except Exception:
+        return None
+
+
+_TOKEN_ENCODER = _get_token_encoder()
+
+
+def _estimate_text_tokens(text: str) -> int:
+    if not text:
+        return 0
+    if _TOKEN_ENCODER is not None:
+        try:
+            return len(_TOKEN_ENCODER.encode(text, disallowed_special=()))
+        except Exception:
+            pass
+    # Fallback: 粗略估算，避免 tokenizer 不可用时失去保护
+    return max(1, len(text) // 4)
+
+
+def _message_to_token_text(msg: Any) -> str:
+    if isinstance(msg, dict):
+        role = msg.get("role") or msg.get("type") or "unknown"
+        content = msg.get("content", "")
+    else:
+        role = getattr(msg, "role", None) or getattr(msg, "type", None) or "unknown"
+        content = getattr(msg, "content", "")
+
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict):
+                item_type = item.get("type")
+                if item_type == "text":
+                    parts.append(str(item.get("text", "")))
+                elif item_type == "image_url":
+                    parts.append("[image]")
+                else:
+                    parts.append(json.dumps(item, ensure_ascii=False))
+            else:
+                parts.append(str(item))
+        content_text = "\n".join(parts)
+    elif isinstance(content, dict):
+        content_text = json.dumps(content, ensure_ascii=False)
+    else:
+        content_text = str(content)
+
+    return f"{role}: {content_text}\n"
+
+
+def _estimate_messages_tokens(messages: list[Any]) -> int:
+    return sum(_estimate_text_tokens(_message_to_token_text(msg)) for msg in messages)
+
+
+def _get_input_token_budget() -> int:
+    context_window = int(os.getenv("YUXI_CHAT_CONTEXT_WINDOW", "16384"))
+    input_ratio = float(os.getenv("YUXI_CHAT_INPUT_TOKEN_RATIO", "0.9"))
+    output_reserve = int(os.getenv("YUXI_CHAT_OUTPUT_TOKEN_RESERVE", "1024"))
+    ratio_budget = int(context_window * input_ratio)
+    reserve_budget = context_window - output_reserve
+    budget = min(ratio_budget, reserve_budget)
+    return max(512, budget)
+
+
+def _is_context_length_error(e: Exception) -> bool:
+    text = str(e).lower()
+    return (
+        "context length" in text
+        or "input_tokens" in text
+        or "maximum input length" in text
+        or "max context length" in text
+    )
+
+
+def _trim_oldest_non_system_messages(messages: list[Any], drop_count: int) -> list[Any]:
+    systems: list[Any] = []
+    non_systems: list[Any] = []
+    for msg in messages:
+        if _is_system_message(msg):
+            systems.append(msg)
+        else:
+            non_systems.append(msg)
+
+    # 至少保留最近一轮问答（2条）避免语义断裂
+    min_keep_non_system = 2
+    if len(non_systems) <= min_keep_non_system:
+        return messages
+
+    keep_non_system = max(min_keep_non_system, len(non_systems) - drop_count)
+    trimmed_non_systems = non_systems[-keep_non_system:]
+    return [*systems, *trimmed_non_systems]
+
+
+def _trim_messages_to_token_budget(messages: list[Any], budget: int) -> tuple[list[Any], int]:
+    current = list(messages)
+    estimated = _estimate_messages_tokens(current)
+    if estimated <= budget:
+        return current, estimated
+
+    # 分批删除最旧历史消息，避免逐条删除造成多次重复估算
+    drop_steps = [4, 8, 12, 16, 24, 32]
+    for drop_count in drop_steps:
+        trimmed = _trim_oldest_non_system_messages(current, drop_count=drop_count)
+        if len(trimmed) >= len(current):
+            break
+        current = trimmed
+        estimated = _estimate_messages_tokens(current)
+        if estimated <= budget:
+            return current, estimated
+
+    # 仍超限时，继续强制每次删 1 条，直到达到预算或触达最小保留
+    while estimated > budget:
+        trimmed = _trim_oldest_non_system_messages(current, drop_count=1)
+        if len(trimmed) >= len(current):
+            break
+        current = trimmed
+        estimated = _estimate_messages_tokens(current)
+
+    return current, estimated
+
+
 class RuntimeConfigMiddleware(AgentMiddleware):
     """运行时配置中间件 - 应用模型/工具/知识库/MCP/提示词配置
 
@@ -120,6 +250,19 @@ class RuntimeConfigMiddleware(AgentMiddleware):
         # Runtime middleware only normalizes ordering for vLLM compatibility.
         messages = [*existing_systems, *remaining]
 
+        # 前置裁剪：调用模型前先按 token 预算裁剪最旧历史消息，减少超限重试。
+        token_budget = _get_input_token_budget()
+        estimated_tokens_before = _estimate_messages_tokens(messages)
+        trimmed_messages, estimated_tokens_after = _trim_messages_to_token_budget(messages, token_budget)
+        if len(trimmed_messages) < len(messages):
+            logger.warning(
+                "Pre-trimmed chat history before model call: "
+                f"messages {len(messages)} -> {len(trimmed_messages)}, "
+                f"tokens_est {estimated_tokens_before} -> {estimated_tokens_after}, "
+                f"budget={token_budget}"
+            )
+        messages = trimmed_messages
+
         request = request.override(model=model, tools=enabled_tools, messages=messages)
 
         # Build debug snapshot once, and emit it only when model call fails.
@@ -140,6 +283,8 @@ class RuntimeConfigMiddleware(AgentMiddleware):
             "tool_names": [t.name for t in enabled_tools],
             "tool_count": len(enabled_tools),
             "message_count": len(messages),
+            "estimated_tokens": estimated_tokens_after,
+            "token_budget": token_budget,
             "messages_preview": [_message_snapshot(m) for m in messages[:6]],
         }
 
@@ -147,21 +292,44 @@ class RuntimeConfigMiddleware(AgentMiddleware):
         # even if lower layers handle/retry without bubbling an exception.
         logger.warning(f"RuntimeConfigMiddleware model call request: {debug_snapshot}")
 
-        try:
-            response = await handler(request)
-            logger.warning(
-                "RuntimeConfigMiddleware model call response: "
-                f"{{'response_type': '{type(response).__name__}', 'response_preview': '{_safe_repr(response)}'}}"
-            )
-            return response
-        except Exception as e:
-            error_snapshot = _extract_llm_error_snapshot(e)
-            logger.error(
-                f"RuntimeConfigMiddleware model call failed: {type(e).__name__}: {e}\n"
-                f"Request snapshot: {debug_snapshot}\n"
-                f"LLM error snapshot: {error_snapshot}"
-            )
-            raise
+        current_request = request
+        current_messages = list(messages)
+
+        # 上下文超长时，逐步裁剪最旧历史消息并重试，避免长对话直接 400 失败。
+        trim_drop_steps = [4, 8, 12]
+
+        for attempt in range(len(trim_drop_steps) + 1):
+            try:
+                response = await handler(current_request)
+                logger.warning(
+                    "RuntimeConfigMiddleware model call response: "
+                    f"{{'response_type': '{type(response).__name__}', 'response_preview': '{_safe_repr(response)}'}}"
+                )
+                return response
+            except Exception as e:
+                error_snapshot = _extract_llm_error_snapshot(e)
+                logger.error(
+                    f"RuntimeConfigMiddleware model call failed: {type(e).__name__}: {e}\n"
+                    f"Request snapshot: {debug_snapshot}\n"
+                    f"LLM error snapshot: {error_snapshot}"
+                )
+
+                if attempt >= len(trim_drop_steps) or not _is_context_length_error(e):
+                    raise
+
+                drop_count = trim_drop_steps[attempt]
+                trimmed_messages = _trim_oldest_non_system_messages(current_messages, drop_count=drop_count)
+                if len(trimmed_messages) >= len(current_messages):
+                    raise
+
+                logger.warning(
+                    "Detected context-length overflow, retrying with trimmed history: "
+                    f"attempt={attempt + 1}, original_messages={len(current_messages)}, "
+                    f"trimmed_messages={len(trimmed_messages)}, drop_count={drop_count}"
+                )
+
+                current_messages = trimmed_messages
+                current_request = current_request.override(messages=current_messages)
 
     async def get_tools_from_context(self, context) -> list:
         """从上下文配置中获取工具列表"""

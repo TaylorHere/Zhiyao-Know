@@ -139,7 +139,9 @@ export function useAgentStreamHandler({
             )
           }
         }
-        return true
+        // 不要在收到 finished 后立即停止读取，继续读到服务端自然关闭连接，
+        // 避免客户端提前断开导致后端误判为 interrupted。
+        return false
 
       case 'interrupted':
         // 中断状态，刷新消息历史

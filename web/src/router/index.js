@@ -112,7 +112,7 @@ const router = createRouter({
           path: '',
           name: 'ChatWithAgentComp',
           component: () => import('../views/ChatWithAgentView.vue'),
-          meta: { keepAlive: true, requiresAuth: true }
+          meta: { keepAlive: false, requiresAuth: true }
         }
       ]
     },

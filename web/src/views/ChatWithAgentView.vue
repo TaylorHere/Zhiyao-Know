@@ -40,7 +40,7 @@
           >
             <AgentMessageComponent
               v-for="(msg, msgIndex) in conversation.messages"
-              :key="`msg-${convIndex}-${msgIndex}-${msg.id || msg.type}-${msg.content?.length || 0}`"
+              :key="msg.id || `msg-${convIndex}-${msgIndex}-${msg.type || 'unknown'}`"
               :message="msg"
               :is-processing="
                 isProcessing &&
@@ -314,7 +314,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, reactive, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, reactive, nextTick } from 'vue'
 import { useAgentStore } from '@/stores/agent'
 import { useChatUIStore } from '@/stores/chatUI'
 import { useUserStore } from '@/stores/user'
@@ -574,8 +574,10 @@ const fetchThreadMessages = async (threadId, delay = 0) => {
       agent_config_id: MARKETING_AGENT_CONFIG_ID
     })
     const serverHistory = response.history || []
-    // 保存到threadMessages中
-    threadMessages.value[threadId] = serverHistory
+    // 仅保留当前线程历史，避免多线程历史长期驻留导致内存持续增长
+    threadMessages.value = {
+      [threadId]: serverHistory
+    }
     
     // 如果附件面板打开，刷新附件列表
     if (isAttachmentPanelOpen.value) {
@@ -696,8 +698,9 @@ const createNewChat = async () => {
       // 将新对话放到列表最前面
       threads.value.unshift(thread)
       currentThreadId.value = thread.id
-      // 清空当前对话内容与附件
-      conversations.value = []
+      // 新线程从空消息开始
+      threadMessages.value = { [thread.id]: [] }
+      resetOnGoingConv(thread.id)
       currentImage.value = null
       currentAttachments.value = []
       threadAttachments.value = []
@@ -1187,21 +1190,28 @@ const handleStreamResponse = async (response, threadId) => {
   }
 }
 
-// 监听线程变化，刷新附件列表
-watch(currentThreadId, async (newThreadId) => {
-  if (newThreadId && isAttachmentPanelOpen.value) {
-    await fetchThreadAttachments(newThreadId)
-  } else if (!newThreadId) {
-    threadAttachments.value = []
-  }
-})
-
 // 初始化（营销页固定拉取 HuizhouPowerQAAgent 对话列表）
 onMounted(async () => {
   if (!agentStore.isInitialized) {
     await agentStore.initialize()
   }
   await fetchThreads()
+})
+
+onUnmounted(() => {
+  // 释放流式请求
+  Object.values(threadStates).forEach((state) => {
+    if (state?.streamAbortController) {
+      state.streamAbortController.abort()
+      state.streamAbortController = null
+    }
+  })
+  // 主动清空大对象，帮助 GC 回收
+  threads.value = []
+  threadMessages.value = {}
+  threadAttachments.value = []
+  currentAttachments.value = []
+  currentImage.value = null
 })
 </script>
 
