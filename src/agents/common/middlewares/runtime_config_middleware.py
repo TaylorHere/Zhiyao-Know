@@ -19,12 +19,23 @@ CHINESE_OUTPUT_GUARD_PROMPT = (
 )
 
 
+def _is_system_like_role(role: Any) -> bool:
+    if not isinstance(role, str):
+        return False
+    return role.lower() in {"system", "developer"}
+
+
 def _is_system_message(msg: Any) -> bool:
     if isinstance(msg, dict):
         role = msg.get("role") or msg.get("type")
-        return role == "system"
+        return _is_system_like_role(role)
+    if isinstance(msg, (tuple, list)) and len(msg) >= 1:
+        return _is_system_like_role(msg[0])
     msg_type = getattr(msg, "type", None) or getattr(msg, "role", None)
-    return msg_type == "system"
+    if _is_system_like_role(msg_type):
+        return True
+    # Fallback for message classes that don't expose role/type directly.
+    return msg.__class__.__name__.lower().startswith("system")
 
 
 def _is_user_message(msg: Any) -> bool:
@@ -39,6 +50,9 @@ def _get_message_content(msg: Any) -> str | None:
     if isinstance(msg, dict):
         content = msg.get("content")
         return str(content) if content is not None else None
+    if isinstance(msg, (tuple, list)) and len(msg) >= 2:
+        content = msg[1]
+        return str(content) if content is not None else None
     content = getattr(msg, "content", None)
     return str(content) if content is not None else None
 
@@ -46,6 +60,17 @@ def _get_message_content(msg: Any) -> str | None:
 def _has_language_guard_prompt(msg: Any) -> bool:
     content = _get_message_content(msg)
     return isinstance(content, str) and "【语言约束】" in content
+
+
+def _partition_messages_system_first(messages: list[Any]) -> tuple[list[Any], list[Any]]:
+    systems: list[Any] = []
+    remaining: list[Any] = []
+    for msg in messages:
+        if _is_system_message(msg):
+            systems.append(msg)
+        else:
+            remaining.append(msg)
+    return systems, remaining
 
 
 def _safe_preview(text: str | None, limit: int = 300) -> str:
@@ -272,13 +297,7 @@ class RuntimeConfigMiddleware(AgentMiddleware):
 
         # vLLM/HF chat template requires every system message to be at the beginning.
         # Partition messages globally so no system message remains in the middle/tail.
-        existing_systems: list[Any] = []
-        remaining: list[Any] = []
-        for msg in request.messages:
-            if _is_system_message(msg):
-                existing_systems.append(msg)
-            else:
-                remaining.append(msg)
+        existing_systems, remaining = _partition_messages_system_first(list(request.messages))
 
         # Keep create_agent(system_prompt=...) as the single source of system prompt.
         # Runtime middleware only normalizes ordering for vLLM compatibility.
@@ -287,6 +306,9 @@ class RuntimeConfigMiddleware(AgentMiddleware):
             existing_systems.append({"role": "system", "content": CHINESE_OUTPUT_GUARD_PROMPT})
 
         messages = [*existing_systems, *remaining]
+        # Final safeguard: re-partition once more to tolerate unrecognized message wrappers.
+        systems2, remaining2 = _partition_messages_system_first(messages)
+        messages = [*systems2, *remaining2]
 
         # 前置裁剪：调用模型前先按 token 预算裁剪最旧历史消息，减少超限重试。
         token_budget = _get_input_token_budget()
