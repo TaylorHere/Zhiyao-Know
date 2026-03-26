@@ -57,7 +57,41 @@ async def _get_existing_message_ids(conv_repo: ConversationRepository, thread_id
     }
 
 
+def _normalize_reasoning_fields(msg_dict: dict) -> dict:
+    """将不同模型返回的 reasoning 字段统一映射为 reasoning_content。"""
+    if not isinstance(msg_dict, dict):
+        return msg_dict
+
+    additional_kwargs = msg_dict.get("additional_kwargs")
+    if not isinstance(additional_kwargs, dict):
+        additional_kwargs = {}
+        msg_dict["additional_kwargs"] = additional_kwargs
+
+    provider_specific_fields = msg_dict.get("provider_specific_fields")
+    if not isinstance(provider_specific_fields, dict):
+        provider_specific_fields = {}
+        msg_dict["provider_specific_fields"] = provider_specific_fields
+
+    reasoning_content = (
+        msg_dict.get("reasoning_content")
+        or msg_dict.get("reasoning")
+        or additional_kwargs.get("reasoning_content")
+        or additional_kwargs.get("reasoning")
+        or provider_specific_fields.get("reasoning_content")
+        or provider_specific_fields.get("reasoning")
+        or (additional_kwargs.get("provider_specific_fields") or {}).get("reasoning_content")
+        or (additional_kwargs.get("provider_specific_fields") or {}).get("reasoning")
+    )
+
+    if reasoning_content:
+        msg_dict["reasoning_content"] = reasoning_content
+        additional_kwargs["reasoning_content"] = additional_kwargs.get("reasoning_content") or reasoning_content
+
+    return msg_dict
+
+
 async def _save_ai_message(conv_repo: ConversationRepository, thread_id: str, msg_dict: dict) -> None:
+    msg_dict = _normalize_reasoning_fields(msg_dict)
     content = msg_dict.get("content", "")
     tool_calls_data = msg_dict.get("tool_calls", [])
 
@@ -148,6 +182,7 @@ async def save_messages_from_langgraph_state(
 
         for msg in messages:
             msg_dict = msg.model_dump() if hasattr(msg, "model_dump") else {}
+            msg_dict = _normalize_reasoning_fields(msg_dict)
             msg_type = msg_dict.get("type", "unknown")
 
             if msg_type == "human" or getattr(msg, "id", None) in existing_ids:
@@ -379,6 +414,7 @@ async def stream_agent_chat(
                     return
 
                 msg_dict = msg.model_dump()
+                msg_dict = _normalize_reasoning_fields(msg_dict)
                 # Keep one stable id for the same assistant streaming reply.
                 # Some providers/chains emit per-chunk ids, which would be rendered as many
                 # separate bubbles on the frontend (fast "screen flooding").
@@ -389,6 +425,7 @@ async def stream_agent_chat(
                 yield make_chunk(content=msg.content, msg=msg_dict, metadata=metadata, status="loading")
             else:
                 msg_dict = msg.model_dump()
+                msg_dict = _normalize_reasoning_fields(msg_dict)
                 yield make_chunk(msg=msg_dict, metadata=metadata, status="loading")
 
                 try:

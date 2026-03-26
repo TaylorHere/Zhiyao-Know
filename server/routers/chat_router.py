@@ -135,9 +135,30 @@ async def call(query: str = Body(...), meta: dict = Body(None), current_user: Us
     )
 
     response = await model.call(query)
+    response_dict = response.model_dump() if hasattr(response, "model_dump") else {}
+    additional_kwargs = response_dict.get("additional_kwargs") or {}
+    provider_specific_fields = response_dict.get("provider_specific_fields") or {}
+    reasoning_content = (
+        getattr(response, "reasoning_content", None)
+        or getattr(response, "reasoning", None)
+        or response_dict.get("reasoning_content")
+        or response_dict.get("reasoning")
+        or additional_kwargs.get("reasoning_content")
+        or additional_kwargs.get("reasoning")
+        or provider_specific_fields.get("reasoning_content")
+        or provider_specific_fields.get("reasoning")
+        or (additional_kwargs.get("provider_specific_fields") or {}).get("reasoning_content")
+        or (additional_kwargs.get("provider_specific_fields") or {}).get("reasoning")
+        or ""
+    )
+
     logger.debug({"query": query, "response": response.content})
 
-    return {"response": response.content, "request_id": meta["request_id"]}
+    return {
+        "response": response.content,
+        "reasoning_content": reasoning_content,
+        "request_id": meta["request_id"],
+    }
 
 
 @chat.get("/agent")
