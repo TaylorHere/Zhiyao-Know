@@ -181,6 +181,19 @@ class KnowledgeBaseManager:
         for row in rows:
             kb_instance = self._get_or_create_kb_instance(row.kb_type or "lightrag")
             db_info = kb_instance.get_database_info(row.db_id)
+            if db_info is None:
+                await kb_instance._load_metadata()
+                db_info = kb_instance.get_database_info(row.db_id)
+            if db_info is None:
+                db_info = {
+                    "db_id": row.db_id,
+                    "name": row.name,
+                    "description": row.description,
+                    "kb_type": row.kb_type,
+                    "files": {},
+                    "row_count": 0,
+                    "status": "已连接",
+                }
             if db_info:
                 # 补充 share_config 和 additional_params
                 db_info["share_config"] = row.share_config or {"is_shared": True, "accessible_departments": []}
@@ -443,17 +456,29 @@ class KnowledgeBaseManager:
     async def parse_file(self, db_id: str, file_id: str, operator_id: str | None = None) -> dict:
         """Parse file to Markdown"""
         kb_instance = await self._get_kb_for_database(db_id)
-        return await kb_instance.parse_file(db_id, file_id, operator_id)
+        try:
+            return await kb_instance.parse_file(db_id, file_id, operator_id)
+        except ValueError:
+            await kb_instance._load_metadata()
+            return await kb_instance.parse_file(db_id, file_id, operator_id)
 
     async def index_file(self, db_id: str, file_id: str, operator_id: str | None = None) -> dict:
         """Index parsed file"""
         kb_instance = await self._get_kb_for_database(db_id)
-        return await kb_instance.index_file(db_id, file_id, operator_id)
+        try:
+            return await kb_instance.index_file(db_id, file_id, operator_id)
+        except ValueError:
+            await kb_instance._load_metadata()
+            return await kb_instance.index_file(db_id, file_id, operator_id)
 
     async def update_file_params(self, db_id: str, file_id: str, params: dict, operator_id: str | None = None) -> None:
         """Update file processing params"""
         kb_instance = await self._get_kb_for_database(db_id)
-        await kb_instance.update_file_params(db_id, file_id, params, operator_id)
+        try:
+            await kb_instance.update_file_params(db_id, file_id, params, operator_id)
+        except ValueError:
+            await kb_instance._load_metadata()
+            await kb_instance.update_file_params(db_id, file_id, params, operator_id)
 
     async def aquery(self, query_text: str, db_id: str, **kwargs) -> str:
         """异步查询知识库"""
@@ -482,6 +507,9 @@ class KnowledgeBaseManager:
         try:
             kb_instance = await self._get_kb_for_database(db_id)
             db_info = kb_instance.get_database_info(db_id)
+            if db_info is None:
+                await kb_instance._load_metadata()
+                db_info = kb_instance.get_database_info(db_id)
             
             # 如果 kb_instance.get_database_info 返回 None，使用默认结构
             if db_info is None:
@@ -534,12 +562,20 @@ class KnowledgeBaseManager:
     async def get_file_basic_info(self, db_id: str, file_id: str) -> dict:
         """获取文件基本信息（仅元数据）"""
         kb_instance = await self._get_kb_for_database(db_id)
-        return await kb_instance.get_file_basic_info(db_id, file_id)
+        try:
+            return await kb_instance.get_file_basic_info(db_id, file_id)
+        except ValueError:
+            await kb_instance._load_metadata()
+            return await kb_instance.get_file_basic_info(db_id, file_id)
 
     async def get_file_content(self, db_id: str, file_id: str) -> dict:
         """获取文件内容信息（chunks和lines）"""
         kb_instance = await self._get_kb_for_database(db_id)
-        return await kb_instance.get_file_content(db_id, file_id)
+        try:
+            return await kb_instance.get_file_content(db_id, file_id)
+        except ValueError:
+            await kb_instance._load_metadata()
+            return await kb_instance.get_file_content(db_id, file_id)
 
     async def get_file_info(self, db_id: str, file_id: str) -> dict:
         """获取文件完整信息（基本信息+内容信息）- 保持向后兼容"""
