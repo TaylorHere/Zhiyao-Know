@@ -37,6 +37,7 @@ export const useDatabaseStore = defineStore('database', () => {
   })
 
   let refreshInterval = null
+  let autoRefreshInFlight = false
   let autoRefreshSource = null // Tracks whether auto-refresh was user-triggered or automatic
   let autoRefreshManualOverride = false // Indicates user explicitly disabled auto-refresh
 
@@ -120,7 +121,9 @@ export const useDatabaseStore = defineStore('database', () => {
       }
     } catch (error) {
       console.error(error)
-      message.error(error.message || '获取数据库信息失败')
+      if (!isBackground) {
+        message.error(error.message || '获取数据库信息失败')
+      }
     } finally {
       if (!isBackground) {
         state.lock = false
@@ -518,9 +521,15 @@ export const useDatabaseStore = defineStore('database', () => {
 
   function startAutoRefresh() {
     if (state.autoRefresh && !refreshInterval) {
-      refreshInterval = setInterval(() => {
-        getDatabaseInfo(undefined, true, true) // Skip loading query params during auto-refresh
-      }, 1000)
+      refreshInterval = setInterval(async () => {
+        if (autoRefreshInFlight) return
+        autoRefreshInFlight = true
+        try {
+          await getDatabaseInfo(undefined, true, true) // Skip loading query params during auto-refresh
+        } finally {
+          autoRefreshInFlight = false
+        }
+      }, 5000)
     }
   }
 
@@ -529,6 +538,7 @@ export const useDatabaseStore = defineStore('database', () => {
       clearInterval(refreshInterval)
       refreshInterval = null
     }
+    autoRefreshInFlight = false
   }
 
   // 延时刷新文件理解（延迟1秒后刷新）

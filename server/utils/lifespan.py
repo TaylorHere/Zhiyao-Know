@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from src.services.task_service import tasker
 from src.services.mcp_service import init_mcp_servers
 from src.services.first_run_seed_service import FirstRunSeedService
+from src.services.kb_startup_recovery_service import recover_interrupted_kb_tasks_on_startup
 from src.storage.postgres.manager import pg_manager
 from src.knowledge import knowledge_base
 from src.utils import logger
@@ -40,6 +41,13 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to run HuizhouPowerQA startup binding check: {e}")
 
     await tasker.start()
+
+    # 启动恢复：服务重启后自动修复并补跑中断的知识库解析/入库任务
+    try:
+        await recover_interrupted_kb_tasks_on_startup()
+    except Exception as e:
+        logger.error(f"Failed to recover interrupted KB tasks on startup: {e}")
+
     yield
     await tasker.shutdown()
     await pg_manager.close()
