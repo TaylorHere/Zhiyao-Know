@@ -28,8 +28,9 @@ services:
     environment:
       - NLTK_DATA=/app/nltk_data
       - HOST_IP=${HOST_IP:-}
-      - YUXI_API_WORKERS=${YUXI_API_WORKERS:-4}
-      - YUXI_TASK_WORKER_COUNT=${YUXI_TASK_WORKER_COUNT:-8}
+      - YUXI_API_WORKERS=${YUXI_API_WORKERS:-1}
+      - YUXI_TASK_WORKER_COUNT=${YUXI_TASK_WORKER_COUNT:-1}
+      - YUXI_INDEX_CONCURRENCY=${YUXI_INDEX_CONCURRENCY:-1}
       - POSTGRES_URL=${POSTGRES_URL:-postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-yuxi_know}}
       - POSTGRES_POOL_SIZE=${POSTGRES_POOL_SIZE:-40}
       - POSTGRES_MAX_OVERFLOW=${POSTGRES_MAX_OVERFLOW:-20}
@@ -50,7 +51,7 @@ services:
       - NO_PROXY=localhost,127.0.0.1,milvus,graph,milvus-minio,milvus-etcd-dev,etcd,minio,mineru,paddlex,api.siliconflow.cn
       - no_proxy=localhost,127.0.0.1,milvus,graph,milvus-minio,milvus-etcd-dev,etcd,minio,mineru,paddlex,api.siliconflow.cn
     # endregion api_envs
-    command: sh -c "uvicorn server.main:app --host 0.0.0.0 --port 5050 --workers ${YUXI_API_WORKERS:-4}"
+    command: sh -c "uvicorn server.main:app --host 0.0.0.0 --port 5050 --workers ${YUXI_API_WORKERS:-1}"
     ulimits:
       nofile:
         soft: 1048576

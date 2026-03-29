@@ -536,6 +536,7 @@ async def parse_documents(db_id: str, file_ids: list[str] = Body(...), current_u
         await context.set_message("任务初始化")
         await context.set_progress(5.0, "准备解析文档")
 
+        total = len(file_ids)
         processed_items = []
 
         try:

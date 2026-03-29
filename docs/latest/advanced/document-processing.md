@@ -224,3 +224,90 @@ YUXI_INDEX_CONCURRENCY=4
 - 文档较小或大量空文本分块时，并发收益有限。
 - 文档较大且分块较多时，提高 `index_concurrency` 收益更明显。
 - 建议逐步调大并发，观察 CPU、内存、向量库与嵌入服务负载，避免过载。
+
+## 惠州批量导入脚本用法
+
+脚本路径：`scripts/batch_import_huizhou.py`
+
+### 快速示例
+
+仅预览目录结构（不创建部门、不上传文件）：
+
+```bash
+python scripts/batch_import_huizhou.py --dry-run
+```
+
+实际导入（上传并发 + 入库提交并发 + 自动入库）：
+
+```bash
+python scripts/batch_import_huizhou.py \
+  --upload-concurrency 4 \
+  --ingest-concurrency 2 \
+  --ingest-batch-size 30 \
+  --index-concurrency 2
+```
+
+仅上传与解析，不自动入库：
+
+```bash
+python scripts/batch_import_huizhou.py --no-auto-index
+```
+
+### 参数详细说明
+
+- `--dry-run`
+  - 类型：开关
+  - 默认：关闭
+  - 作用：只打印将要处理的部门/知识库/文件，不执行实际 API 调用。
+
+- `--concurrency`
+  - 类型：整数
+  - 默认：`1`
+  - 作用：兼容旧参数，等同 `--upload-concurrency`。建议新任务优先使用 `--upload-concurrency`。
+
+- `--upload-concurrency`
+  - 类型：整数（>=1）
+  - 默认：未传时继承 `--concurrency`
+  - 作用：单个知识库内“文件上传”并发数。
+
+- `--ingest-concurrency`
+  - 类型：整数（>=1）
+  - 默认：`1`
+  - 作用：`/documents` 入库任务提交并发数（提交 API 的并发，不是模型推理并发）。
+
+- `--ingest-batch-size`
+  - 类型：整数（>=1）
+  - 默认：`50`
+  - 作用：每次调用 `/documents` 时携带的文件数量。大批次减少任务条数，小批次更稳健。
+
+- `--index-concurrency`
+  - 类型：整数（>=1）
+  - 默认：`2`
+  - 作用：透传到后端 `params.index_concurrency`，控制单任务内入库并发。
+  - 建议：若嵌入模型来自外部 API（例如 SiliconFlow），建议从 `1~2` 起步，避免触发 429 限流。
+
+- `--no-auto-index`
+  - 类型：开关
+  - 默认：关闭（默认自动入库开启）
+  - 作用：关闭自动入库，仅执行上传+解析。
+
+### 脚本行为说明
+
+- 自动跳过隐藏文件和 Office 临时锁文件（如 `~$xxx.docx`）。
+- 若文件已存在，会进入补漏流程：
+  - `uploaded/error_parsing/failed/parsing`：补解析
+  - `parsed/error_indexing/indexing/done`：补入库
+
+### 推荐并发策略
+
+- 首次导入或外部嵌入服务有限流时：
+  - `--upload-concurrency 2`
+  - `--ingest-concurrency 1`
+  - `--ingest-batch-size 20~30`
+  - `--index-concurrency 1~2`
+
+- 本地嵌入服务、机器资源充足时：
+  - `--upload-concurrency 4~8`
+  - `--ingest-concurrency 2~4`
+  - `--ingest-batch-size 30~80`
+  - `--index-concurrency 3~6`

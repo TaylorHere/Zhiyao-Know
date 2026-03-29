@@ -50,6 +50,13 @@ SOURCE_DIR = "/mnt/usb2/4.文件汇总"
 SUPPORTED_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt", ".xls", ".xlsx", ".ppt", ".pptx"}
 
 
+def batched(items: list, size: int) -> list[list]:
+    """按批次切分列表"""
+    if size <= 0:
+        return [items]
+    return [items[i : i + size] for i in range(0, len(items), size)]
+
+
 def remove_prefix_number(name: str) -> str:
     """移除名称前的序号，如 '17.数字化部' -> '数字化部'"""
     return re.sub(r"^\d+\.\s*", "", name)
@@ -84,7 +91,7 @@ def get_directory_structure(root_path: str) -> dict:
             continue
         if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
             continue
-        if file_path.name.startswith("."):
+        if file_path.name.startswith(".") or file_path.name.startswith("~$"):
             continue
         
         # 获取相对路径
@@ -119,9 +126,21 @@ def get_directory_structure(root_path: str) -> dict:
 
 
 class HuizhouImporter:
-    def __init__(self, dry_run: bool = False, concurrency: int = 1):
+    def __init__(
+        self,
+        dry_run: bool = False,
+        upload_concurrency: int = 1,
+        ingest_concurrency: int = 1,
+        ingest_batch_size: int = 50,
+        index_concurrency: int = 2,
+        auto_index: bool = True,
+    ):
         self.dry_run = dry_run
-        self.concurrency = max(1, concurrency)
+        self.upload_concurrency = max(1, upload_concurrency)
+        self.ingest_concurrency = max(1, ingest_concurrency)
+        self.ingest_batch_size = max(1, ingest_batch_size)
+        self.index_concurrency = max(1, index_concurrency)
+        self.auto_index = auto_index
         self.token = None
         self.embed_model_name = os.getenv("YUXI_EMBED_MODEL")
         self.dept_id_cache = {}  # 部门路径 -> 部门ID
@@ -130,7 +149,8 @@ class HuizhouImporter:
             "departments": 0,
             "knowledge_bases": 0,
             "files_uploaded": 0,
-            "files_failed": 0
+            "files_failed": 0,
+            "ingest_tasks_submitted": 0,
         }
     
     async def login(self):
@@ -593,7 +613,12 @@ class HuizhouImporter:
                     headers=self.get_headers(),
                     json={
                         "file_ids": retry_index_ids,
-                        "params": {"chunk_size": 1000, "chunk_overlap": 200, "qa_separator": ""},
+                        "params": {
+                            "chunk_size": 1000,
+                            "chunk_overlap": 200,
+                            "qa_separator": "",
+                            "index_concurrency": self.index_concurrency,
+                        },
                     },
                 )
                 if resp.status_code == 200:
@@ -639,55 +664,54 @@ class HuizhouImporter:
                 print(f"      ❌ 入库失败：知识库不存在 (name={kb_name})")
                 return
 
-            async with httpx.AsyncClient(timeout=600) as client:
-                response = None
-                if items:
+            async def _submit_ingest(pair_batch: list[tuple[str, str]]) -> bool:
+                batch_items = [item for item, _ in pair_batch]
+                batch_hashes = {item: h for item, h in pair_batch}
+                payload = {
+                    "items": batch_items,
+                    "params": {
+                        "auto_index": self.auto_index,
+                        "index_concurrency": self.index_concurrency,
+                        "content_hashes": batch_hashes,
+                    },
+                }
+                async with httpx.AsyncClient(timeout=600) as client:
                     response = await client.post(
                         f"{API_BASE_URL}/api/knowledge/databases/{kb_id}/documents",
                         headers=self.get_headers(),
-                        json={
-                            "items": items,
-                            "params": {
-                                "auto_index": True,
-                                "content_hashes": content_hashes
-                            }
-                        }
+                        json=payload,
                     )
-                
-                if response is not None and response.status_code == 200:
-                    data = response.json()
-                    task_id = data.get("task_id", "unknown")
-                    print(f"      ✅ 入库任务已提交 (task_id: {task_id})")
-                elif response is not None and (response.status_code == 404 or "not found" in response.text.lower()):
-                    # 处理数据库ID漂移：按名称重查后重试一次
-                    print(f"      ⚠️  入库返回 not found，尝试刷新知识库ID后重试...")
-                    refreshed_kb_id = await self.ensure_valid_kb_id("", kb_name)
-                    if refreshed_kb_id and refreshed_kb_id != kb_id:
-                        retry_resp = await client.post(
-                            f"{API_BASE_URL}/api/knowledge/databases/{refreshed_kb_id}/documents",
-                            headers=self.get_headers(),
-                            json={
-                                "items": items,
-                                "params": {
-                                    "auto_index": True,
-                                    "content_hashes": content_hashes
-                                }
-                            }
-                        )
-                        if retry_resp.status_code == 200:
-                            data = retry_resp.json()
-                            task_id = data.get("task_id", "unknown")
-                            print(f"      ✅ 重试入库成功 (task_id: {task_id})")
-                            await self.retry_existing_files(refreshed_kb_id, existing_files)
-                            return
-                        print(f"      ❌ 重试入库失败: {retry_resp.text[:100]}")
-                    else:
-                        print(f"      ❌ 无法刷新到有效知识库ID，重试终止")
-                elif response is not None:
-                    print(f"      ❌ 入库失败: {response.text[:100]}")
+                if response.status_code == 200:
+                    task_id = (response.json() or {}).get("task_id", "unknown")
+                    print(f"      ✅ 入库任务已提交 (task_id: {task_id}, files={len(batch_items)})")
+                    self.stats["ingest_tasks_submitted"] += 1
+                    return True
+                print(f"      ❌ 入库提交失败 (files={len(batch_items)}): {response.status_code} {response.text[:120]}")
+                return False
 
-                if existing_files:
-                    await self.retry_existing_files(kb_id, existing_files)
+            if items:
+                item_pairs = [(item, content_hashes[item]) for item in items if item in content_hashes]
+                batches = batched(item_pairs, self.ingest_batch_size)
+                print(
+                    f"      入库批次: {len(batches)} 批, 批大小: {self.ingest_batch_size}, "
+                    f"提交并发: {self.ingest_concurrency}, auto_index={'on' if self.auto_index else 'off'}, "
+                    f"index_concurrency={self.index_concurrency}"
+                )
+
+                if self.ingest_concurrency <= 1:
+                    for pair_batch in batches:
+                        await _submit_ingest(pair_batch)
+                else:
+                    semaphore = asyncio.Semaphore(self.ingest_concurrency)
+
+                    async def _submit_with_limit(pair_batch: list[tuple[str, str]]) -> bool:
+                        async with semaphore:
+                            return await _submit_ingest(pair_batch)
+
+                    await asyncio.gather(*[_submit_with_limit(b) for b in batches], return_exceptions=True)
+
+            if existing_files:
+                await self.retry_existing_files(kb_id, existing_files)
         except Exception as e:
             print(f"      ❌ 入库异常: {e}")
     
@@ -698,7 +722,13 @@ class HuizhouImporter:
         print("="*60)
         print(f"源目录: {SOURCE_DIR}")
         print(f"模式: {'DRY-RUN (仅预览)' if self.dry_run else '实际执行'}")
-        print(f"上传并发: {self.concurrency}")
+        print(
+            f"并发参数: upload={self.upload_concurrency}, "
+            f"ingest_submit={self.ingest_concurrency}, "
+            f"ingest_batch_size={self.ingest_batch_size}, "
+            f"index_concurrency={self.index_concurrency}, "
+            f"auto_index={'on' if self.auto_index else 'off'}"
+        )
         
         # 1. 解析目录结构
         print("\n" + "-"*60)
@@ -778,13 +808,13 @@ class HuizhouImporter:
             
             # 上传文件
             file_infos = []  # [(minio_path, content_hash), ...]
-            if self.concurrency <= 1:
+            if self.upload_concurrency <= 1:
                 for file_path in files:
                     result = await self.upload_file(kb_id, file_path)
                     if result:
                         file_infos.append(result)
             else:
-                semaphore = asyncio.Semaphore(self.concurrency)
+                semaphore = asyncio.Semaphore(self.upload_concurrency)
 
                 async def _upload_with_limit(path: str):
                     async with semaphore:
@@ -813,15 +843,29 @@ class HuizhouImporter:
         if not self.dry_run:
             print(f"  文件上传成功: {self.stats['files_uploaded']} 个")
             print(f"  文件上传失败: {self.stats['files_failed']} 个")
+            print(f"  入库任务提交: {self.stats['ingest_tasks_submitted']} 个")
 
 
 async def main():
     parser = argparse.ArgumentParser(description="惠州电力局文件批量导入")
     parser.add_argument("--dry-run", action="store_true", help="仅预览，不实际执行")
-    parser.add_argument("--concurrency", type=int, default=1, help="单个知识库内文件上传并发数，默认 1")
+    parser.add_argument("--concurrency", type=int, default=1, help="兼容参数，等同 --upload-concurrency")
+    parser.add_argument("--upload-concurrency", type=int, default=None, help="单个知识库内文件上传并发数")
+    parser.add_argument("--ingest-concurrency", type=int, default=1, help="提交 /documents 任务的并发数")
+    parser.add_argument("--ingest-batch-size", type=int, default=50, help="每次提交 /documents 的文件数")
+    parser.add_argument("--index-concurrency", type=int, default=2, help="透传给后端的入库并发参数")
+    parser.add_argument("--no-auto-index", action="store_true", help="关闭自动入库，仅上传与解析")
     args = parser.parse_args()
-    
-    importer = HuizhouImporter(dry_run=args.dry_run, concurrency=args.concurrency)
+
+    upload_concurrency = args.upload_concurrency if args.upload_concurrency is not None else args.concurrency
+    importer = HuizhouImporter(
+        dry_run=args.dry_run,
+        upload_concurrency=upload_concurrency,
+        ingest_concurrency=args.ingest_concurrency,
+        ingest_batch_size=args.ingest_batch_size,
+        index_concurrency=args.index_concurrency,
+        auto_index=not args.no_auto_index,
+    )
     await importer.run()
 
 
