@@ -425,6 +425,38 @@ export const useDatabaseStore = defineStore('database', () => {
     }
   }
 
+  async function reparseAndIndexFiles(fileIds, params = {}) {
+    if (fileIds.length === 0) return
+    state.chunkLoading = true
+    try {
+      const data = await documentApi.reparseAndIndexDocuments(databaseId.value, fileIds, params)
+      if (data.status === 'success' || data.status === 'queued') {
+        enableAutoRefresh('auto')
+        message.success(data.message || '重解析入库任务已提交')
+        if (data.task_id) {
+          taskerStore.registerQueuedTask({
+            task_id: data.task_id,
+            name: `文档重解析入库 (${databaseId.value})`,
+            task_type: 'knowledge_reparse_index',
+            message: data.message,
+            payload: { db_id: databaseId.value, count: fileIds.length }
+          })
+        }
+        await delayedRefresh()
+        return true
+      } else {
+        message.error(data.message || '提交失败')
+        return false
+      }
+    } catch (error) {
+      console.error(error)
+      message.error(error.message || '请求失败')
+      return false
+    } finally {
+      state.chunkLoading = false
+    }
+  }
+
   async function openFileDetail(record) {
     // 允许所有状态的文件查看详情，让后端决定是否有内容可显示
     // 如果文件未处理完成，后端会返回相应的状态，前端会显示"暂无文件内容"
@@ -554,6 +586,7 @@ export const useDatabaseStore = defineStore('database', () => {
     addFiles,
     parseFiles,
     indexFiles,
+    reparseAndIndexFiles,
     openFileDetail,
     loadQueryParams,
 

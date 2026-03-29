@@ -16,7 +16,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 
 from src.storage.postgres.models_business import Base
-from src.utils.datetime_utils import utc_now_naive
+from src.utils.datetime_utils import utc_now
 
 JSON_VALUE = JSON().with_variant(JSONB, "postgresql")
 
@@ -40,8 +40,8 @@ class KnowledgeBase(Base):
     share_config = Column(JSON_VALUE)
     mindmap = Column(JSON_VALUE)
     sample_questions = Column(JSON_VALUE)
-    created_at = Column(DateTime(timezone=True), default=utc_now_naive)
-    updated_at = Column(DateTime(timezone=True), default=utc_now_naive, onupdate=utc_now_naive)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
 
 class KnowledgeFile(Base):
@@ -69,8 +69,8 @@ class KnowledgeFile(Base):
     error_message = Column(Text)
     created_by = Column(String(64))
     updated_by = Column(String(64))
-    created_at = Column(DateTime(timezone=True), default=utc_now_naive)
-    updated_at = Column(DateTime(timezone=True), default=utc_now_naive, onupdate=utc_now_naive)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
 
 class EvaluationBenchmark(Base):
@@ -89,8 +89,8 @@ class EvaluationBenchmark(Base):
     has_gold_answers = Column(Boolean, default=False)
     data_file_path = Column(String(1024))
     created_by = Column(String(64))
-    created_at = Column(DateTime(timezone=True), default=utc_now_naive)
-    updated_at = Column(DateTime(timezone=True), default=utc_now_naive, onupdate=utc_now_naive)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
 
 class EvaluationResult(Base):
@@ -113,7 +113,7 @@ class EvaluationResult(Base):
     overall_score = Column(Float)
     total_questions = Column(Integer, default=0)
     completed_questions = Column(Integer, default=0)
-    started_at = Column(DateTime(timezone=True), default=utc_now_naive, index=True)
+    started_at = Column(DateTime(timezone=True), default=utc_now, index=True)
     completed_at = Column(DateTime(timezone=True))
     created_by = Column(String(64))
 

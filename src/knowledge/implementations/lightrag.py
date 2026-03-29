@@ -1,3 +1,4 @@
+import asyncio
 import os
 import traceback
 from functools import partial
@@ -311,6 +312,17 @@ class LightRagKB(KnowledgeBase):
 
             return self.files_meta[file_id]
 
+        except asyncio.CancelledError as e:
+            error_msg = str(e) or "indexing task cancelled"
+            logger.warning(f"Indexing cancelled for {file_id}: {error_msg}")
+            self.files_meta[file_id]["status"] = FileStatus.ERROR_INDEXING
+            self.files_meta[file_id]["error"] = error_msg
+            self.files_meta[file_id]["updated_at"] = utc_isoformat()
+            if operator_id:
+                self.files_meta[file_id]["updated_by"] = operator_id
+            await self._save_metadata()
+            raise
+
         except Exception as e:
             logger.error(f"Indexing failed for {file_id}: {e}")
             self.files_meta[file_id]["status"] = FileStatus.ERROR_INDEXING
@@ -512,6 +524,9 @@ class LightRagKB(KnowledgeBase):
 
     async def get_file_basic_info(self, db_id: str, file_id: str) -> dict:
         """获取文件基本信息（仅元数据）"""
+        # 读取单文件状态前先修复可能的卡死处理中状态，避免“页面显示解析中但实际队列已空”
+        self._check_and_fix_processing_status(db_id)
+
         if file_id not in self.files_meta:
             raise Exception(f"File not found: {file_id}")
 

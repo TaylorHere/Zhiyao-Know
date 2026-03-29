@@ -119,6 +119,15 @@
       <div style="display: flex; gap: 2px">
         <a-button
           type="link"
+          @click="handleBatchReparseAndIndex"
+          :loading="batchReparseAndIndexing"
+          :disabled="!canBatchReparseAndIndex"
+          :icon="h(RotateCw, { size: 16 })"
+        >
+          重新解析入库
+        </a-button>
+        <a-button
+          type="link"
           danger
           @click="handleBatchDelete"
           :loading="batchDeleting"
@@ -489,6 +498,7 @@ const lock = computed(() => store.state.lock)
 const batchDeleting = computed(() => store.state.batchDeleting)
 const batchParsing = computed(() => store.state.chunkLoading)
 const batchIndexing = computed(() => store.state.chunkLoading)
+const batchReparseAndIndexing = computed(() => store.state.chunkLoading)
 const autoRefresh = computed(() => store.state.autoRefresh)
 const selectedRowKeys = computed({
   get: () => store.selectedRowKeys,
@@ -1042,6 +1052,14 @@ const canBatchIndex = computed(() => {
   })
 })
 
+const canBatchReparseAndIndex = computed(() => {
+  const allowed = new Set(['uploaded', 'error_parsing', 'failed', 'parsed', 'error_indexing', 'done', 'indexed'])
+  return selectedRowKeys.value.some((key) => {
+    const file = files.value.find((f) => f.file_id === key)
+    return file && !file.is_folder && !lock.value && allowed.has(file.status)
+  })
+})
+
 const showAddFilesModal = (options = {}) => {
   const { isFolder = false, mode = 'file' } = options
   isFolderUploadMode.value = isFolder
@@ -1113,6 +1131,32 @@ const handleDeleteFolder = (record) => {
 
 const handleBatchDelete = () => {
   store.handleBatchDelete()
+}
+
+const handleBatchReparseAndIndex = () => {
+  const allowed = new Set(['uploaded', 'error_parsing', 'failed', 'parsed', 'error_indexing', 'done', 'indexed'])
+  const validKeys = selectedRowKeys.value.filter((key) => {
+    const file = files.value.find((f) => f.file_id === key)
+    return file && !file.is_folder && allowed.has(file.status)
+  })
+
+  if (validKeys.length === 0) {
+    message.warning('没有可重解析入库的文件')
+    return
+  }
+
+  Modal.confirm({
+    title: '批量重解析入库',
+    content: `确定要对选中的 ${validKeys.length} 个文件执行“重新解析并入库”吗？`,
+    okText: '确认',
+    cancelText: '取消',
+    onOk: async () => {
+      const success = await store.reparseAndIndexFiles(validKeys)
+      if (success) {
+        selectedRowKeys.value = []
+      }
+    }
+  })
 }
 
 const handleBatchParse = async () => {

@@ -1,4 +1,5 @@
 import asyncio
+import datetime as dt
 import os
 import socket
 from abc import ABC, abstractmethod
@@ -7,7 +8,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from src.utils import logger
-from src.utils.datetime_utils import coerce_any_to_utc_datetime, utc_isoformat
+from src.utils.datetime_utils import coerce_any_to_utc_datetime, format_utc_datetime, utc_isoformat, utc_now
 
 
 class FileStatus:
@@ -117,6 +118,10 @@ class KnowledgeBase(ABC):
     @staticmethod
     def _normalize_timestamp(value: Any) -> str | None:
         """Convert persisted timestamps to a normalized UTC ISO string."""
+        if isinstance(value, dt.datetime):
+            # 兼容数据库中常见的 naive UTC datetime，避免按本地时区二次偏移
+            return format_utc_datetime(value)
+
         try:
             dt_value = coerce_any_to_utc_datetime(value)
         except (TypeError, ValueError) as exc:  # noqa: BLE001
@@ -140,6 +145,10 @@ class KnowledgeBase(ABC):
                 normalized = self._normalize_timestamp(file_info.get("created_at"))
                 if normalized:
                     file_info["created_at"] = normalized
+            if "updated_at" in file_info:
+                normalized = self._normalize_timestamp(file_info.get("updated_at"))
+                if normalized:
+                    file_info["updated_at"] = normalized
 
         for db_benchmarks in self.benchmarks_meta.values():
             for b in db_benchmarks.values():
@@ -253,16 +262,30 @@ class KnowledgeBase(ABC):
         if not file_path:
             raise ValueError(f"File {file_id} has no valid path in metadata")
 
+        metadata_lock = getattr(self, "_metadata_lock", None)
+
+        async def _persist_file_meta() -> None:
+            self.files_meta[file_id] = file_meta
+            await self._save_metadata()
+
         # Clear previous error if any
         if "error" in file_meta:
-            self.files_meta[file_id].pop("error", None)
+            file_meta.pop("error", None)
 
-        # Update status to PARSING and add to processing queue
-        self.files_meta[file_id]["status"] = FileStatus.PARSING
-        self.files_meta[file_id]["updated_at"] = utc_isoformat()
-        if operator_id:
-            self.files_meta[file_id]["updated_by"] = operator_id
-        await self._save_metadata()
+        # Update status to PARSING and persist atomically with metadata lock if available
+        if metadata_lock is not None:
+            async with metadata_lock:
+                file_meta["status"] = FileStatus.PARSING
+                file_meta["updated_at"] = utc_isoformat()
+                if operator_id:
+                    file_meta["updated_by"] = operator_id
+                await _persist_file_meta()
+        else:
+            file_meta["status"] = FileStatus.PARSING
+            file_meta["updated_at"] = utc_isoformat()
+            if operator_id:
+                file_meta["updated_by"] = operator_id
+            await _persist_file_meta()
 
         # Add to processing queue
         self._add_to_processing_queue(file_id)
@@ -294,25 +317,64 @@ class KnowledgeBase(ABC):
             markdown_file_path = await self._save_markdown_to_minio(db_id, file_id, markdown_content)
 
             # Update metadata
-            self.files_meta[file_id]["status"] = FileStatus.PARSED
-            self.files_meta[file_id]["markdown_file"] = markdown_file_path
-            self.files_meta[file_id]["updated_at"] = utc_isoformat()
-            if operator_id:
-                self.files_meta[file_id]["updated_by"] = operator_id
-            await self._save_metadata()
+            if metadata_lock is not None:
+                async with metadata_lock:
+                    file_meta["status"] = FileStatus.PARSED
+                    file_meta["markdown_file"] = markdown_file_path
+                    file_meta["updated_at"] = utc_isoformat()
+                    if operator_id:
+                        file_meta["updated_by"] = operator_id
+                    await _persist_file_meta()
+            else:
+                file_meta["status"] = FileStatus.PARSED
+                file_meta["markdown_file"] = markdown_file_path
+                file_meta["updated_at"] = utc_isoformat()
+                if operator_id:
+                    file_meta["updated_by"] = operator_id
+                await _persist_file_meta()
 
-            return self.files_meta[file_id]
+            return file_meta
+
+        except asyncio.CancelledError as e:
+            error_msg = str(e) or "parsing task cancelled"
+            logger.warning(f"Parsing cancelled for file {file_id}: {error_msg}")
+
+            if metadata_lock is not None:
+                async with metadata_lock:
+                    file_meta["status"] = FileStatus.ERROR_PARSING
+                    file_meta["error"] = error_msg
+                    file_meta["updated_at"] = utc_isoformat()
+                    if operator_id:
+                        file_meta["updated_by"] = operator_id
+                    await _persist_file_meta()
+            else:
+                file_meta["status"] = FileStatus.ERROR_PARSING
+                file_meta["error"] = error_msg
+                file_meta["updated_at"] = utc_isoformat()
+                if operator_id:
+                    file_meta["updated_by"] = operator_id
+                await _persist_file_meta()
+            raise
 
         except Exception as e:
             error_msg = str(e)
             logger.error(f"Failed to parse file {file_id}: {error_msg}")
 
-            self.files_meta[file_id]["status"] = FileStatus.ERROR_PARSING
-            self.files_meta[file_id]["error"] = error_msg
-            self.files_meta[file_id]["updated_at"] = utc_isoformat()
-            if operator_id:
-                self.files_meta[file_id]["updated_by"] = operator_id
-            await self._save_metadata()
+            if metadata_lock is not None:
+                async with metadata_lock:
+                    file_meta["status"] = FileStatus.ERROR_PARSING
+                    file_meta["error"] = error_msg
+                    file_meta["updated_at"] = utc_isoformat()
+                    if operator_id:
+                        file_meta["updated_by"] = operator_id
+                    await _persist_file_meta()
+            else:
+                file_meta["status"] = FileStatus.ERROR_PARSING
+                file_meta["error"] = error_msg
+                file_meta["updated_at"] = utc_isoformat()
+                if operator_id:
+                    file_meta["updated_by"] = operator_id
+                await _persist_file_meta()
 
             raise
 
@@ -879,7 +941,7 @@ class KnowledgeBase(ABC):
         try:
             status_changed = False
             stale_seconds = int(os.environ.get("YUXI_PROCESSING_STALE_SECONDS", "600"))
-            now_dt = coerce_any_to_utc_datetime(utc_isoformat())
+            now_dt = utc_now()
 
             # 定义需要检查的中间状态及其对应的错误状态
             intermediate_states = {
@@ -897,6 +959,9 @@ class KnowledgeBase(ABC):
                         updated_at = file_info.get("updated_at")
                         updated_dt = coerce_any_to_utc_datetime(updated_at)
                         if not updated_dt:
+                            continue
+                        # 容错：若时间戳异常地晚于当前时间，跳过本次清理，避免误伤
+                        if updated_dt > now_dt:
                             continue
                         # 避免误判正在处理中的任务：仅清理长时间无更新的中间状态
                         if now_dt - updated_dt < timedelta(seconds=stale_seconds):
@@ -1122,75 +1187,83 @@ class KnowledgeBase(ABC):
         from src.repositories.knowledge_base_repository import KnowledgeBaseRepository
         from src.repositories.knowledge_file_repository import KnowledgeFileRepository
 
-        kb_repo = KnowledgeBaseRepository()
-        file_repo = KnowledgeFileRepository()
-        eval_repo = EvaluationRepository()
+        async def _do_load() -> None:
+            kb_repo = KnowledgeBaseRepository()
+            file_repo = KnowledgeFileRepository()
+            eval_repo = EvaluationRepository()
 
-        databases = [kb for kb in await kb_repo.get_all() if kb.kb_type == self.kb_type]
-        self.databases_meta = {
-            kb.db_id: {
-                "name": kb.name,
-                "description": kb.description,
-                "kb_type": kb.kb_type,
-                "visibility": kb.visibility or "public",
-                "embed_info": kb.embed_info,
-                "llm_info": kb.llm_info,
-                "query_params": kb.query_params,
-                "metadata": kb.additional_params or {},
-                "created_at": utc_isoformat(kb.created_at) if kb.created_at else utc_isoformat(),
+            databases = [kb for kb in await kb_repo.get_all() if kb.kb_type == self.kb_type]
+            self.databases_meta = {
+                kb.db_id: {
+                    "name": kb.name,
+                    "description": kb.description,
+                    "kb_type": kb.kb_type,
+                    "visibility": kb.visibility or "public",
+                    "embed_info": kb.embed_info,
+                    "llm_info": kb.llm_info,
+                    "query_params": kb.query_params,
+                    "metadata": kb.additional_params or {},
+                    "created_at": format_utc_datetime(kb.created_at) if kb.created_at else utc_isoformat(),
+                }
+                for kb in databases
             }
-            for kb in databases
-        }
 
-        self.files_meta = {}
-        for kb in databases:
-            for record in await file_repo.list_by_db_id(kb.db_id):
-                self.files_meta[record.file_id] = {
-                    "file_id": record.file_id,
-                    "database_id": record.db_id,
-                    "parent_id": record.parent_id,
-                    "filename": record.filename,
-                    "file_type": record.file_type,
-                    "path": record.path,
-                    "markdown_file": record.markdown_file,
-                    "status": record.status,
-                    "content_hash": record.content_hash,
-                    "size": record.file_size,
-                    "content_type": record.content_type,
-                    "processing_params": record.processing_params,
-                    "is_folder": record.is_folder,
-                    "error": record.error_message,
-                    "created_by": record.created_by,
-                    "updated_by": record.updated_by,
-                    "created_at": utc_isoformat(record.created_at) if record.created_at else None,
-                    "updated_at": utc_isoformat(record.updated_at) if record.updated_at else None,
-                    "original_filename": record.original_filename,
-                    "minio_url": record.minio_url,
-                }
+            self.files_meta = {}
+            for kb in databases:
+                for record in await file_repo.list_by_db_id(kb.db_id):
+                    self.files_meta[record.file_id] = {
+                        "file_id": record.file_id,
+                        "database_id": record.db_id,
+                        "parent_id": record.parent_id,
+                        "filename": record.filename,
+                        "file_type": record.file_type,
+                        "path": record.path,
+                        "markdown_file": record.markdown_file,
+                        "status": record.status,
+                        "content_hash": record.content_hash,
+                        "size": record.file_size,
+                        "content_type": record.content_type,
+                        "processing_params": record.processing_params,
+                        "is_folder": record.is_folder,
+                        "error": record.error_message,
+                        "created_by": record.created_by,
+                        "updated_by": record.updated_by,
+                        "created_at": format_utc_datetime(record.created_at) if record.created_at else None,
+                        "updated_at": format_utc_datetime(record.updated_at) if record.updated_at else None,
+                        "original_filename": record.original_filename,
+                        "minio_url": record.minio_url,
+                    }
 
-        self.benchmarks_meta = {}
-        for kb in databases:
-            benchmarks = await eval_repo.list_benchmarks(kb.db_id)
-            if not benchmarks:
-                continue
-            self.benchmarks_meta[kb.db_id] = {}
-            for bench in benchmarks:
-                self.benchmarks_meta[kb.db_id][bench.benchmark_id] = {
-                    "id": bench.benchmark_id,
-                    "benchmark_id": bench.benchmark_id,
-                    "name": bench.name,
-                    "description": bench.description,
-                    "db_id": bench.db_id,
-                    "question_count": bench.question_count,
-                    "has_gold_chunks": bench.has_gold_chunks,
-                    "has_gold_answers": bench.has_gold_answers,
-                    "benchmark_file": bench.data_file_path,
-                    "created_by": bench.created_by,
-                    "created_at": utc_isoformat(bench.created_at) if bench.created_at else None,
-                    "updated_at": utc_isoformat(bench.updated_at) if bench.updated_at else None,
-                }
+            self.benchmarks_meta = {}
+            for kb in databases:
+                benchmarks = await eval_repo.list_benchmarks(kb.db_id)
+                if not benchmarks:
+                    continue
+                self.benchmarks_meta[kb.db_id] = {}
+                for bench in benchmarks:
+                    self.benchmarks_meta[kb.db_id][bench.benchmark_id] = {
+                        "id": bench.benchmark_id,
+                        "benchmark_id": bench.benchmark_id,
+                        "name": bench.name,
+                        "description": bench.description,
+                        "db_id": bench.db_id,
+                        "question_count": bench.question_count,
+                        "has_gold_chunks": bench.has_gold_chunks,
+                        "has_gold_answers": bench.has_gold_answers,
+                        "benchmark_file": bench.data_file_path,
+                        "created_by": bench.created_by,
+                        "created_at": format_utc_datetime(bench.created_at) if bench.created_at else None,
+                        "updated_at": format_utc_datetime(bench.updated_at) if bench.updated_at else None,
+                    }
 
-        logger.info(f"Loaded {self.kb_type} metadata from database for {len(self.databases_meta)} databases")
+            logger.info(f"Loaded {self.kb_type} metadata from database for {len(self.databases_meta)} databases")
+
+        metadata_lock = getattr(self, "_metadata_lock", None)
+        if metadata_lock is not None:
+            async with metadata_lock:
+                await _do_load()
+        else:
+            await _do_load()
 
     async def _save_metadata(self) -> None:
         from src.repositories.evaluation_repository import EvaluationRepository

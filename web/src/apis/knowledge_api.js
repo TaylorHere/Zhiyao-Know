@@ -177,6 +177,20 @@ export const documentApi = {
       file_ids: fileIds,
       params
     })
+  },
+
+  /**
+   * 批量重解析并入库
+   * @param {string} dbId - 知识库ID
+   * @param {Array} fileIds - 文件ID列表
+   * @param {Object} params - 入库参数
+   * @returns {Promise} - 任务结果
+   */
+  reparseAndIndexDocuments: async (dbId, fileIds, params = {}) => {
+    return apiAdminPost(`/api/knowledge/databases/${dbId}/documents/reparse-index`, {
+      file_ids: fileIds,
+      params
+    })
   }
 }
 

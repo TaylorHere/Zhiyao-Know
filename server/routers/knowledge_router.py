@@ -587,7 +587,7 @@ async def index_documents(
     logger.debug(f"Index documents for db_id {db_id}: {file_ids} {params=}")
 
     # extract operator_id safely before background task
-    operator_id = current_user.id
+    operator_id = current_user.user_id
 
     async def run_index(context: TaskContext):
         await context.set_message("任务初始化")
@@ -658,6 +658,95 @@ async def index_documents(
             coroutine=run_index,
         )
         return {"message": "入库任务已提交", "status": "queued", "task_id": task.id}
+    except Exception as e:
+        return {"message": f"提交失败: {e}", "status": "failed"}
+
+
+@knowledge.post("/databases/{db_id}/documents/reparse-index")
+async def reparse_and_index_documents(
+    db_id: str,
+    file_ids: list[str] = Body(...),
+    params: dict = Body({}),
+    current_user: User = Depends(get_required_user),
+):
+    """批量重解析并入库（自动判断当前状态）"""
+    await _deny_agent_only_kb_from_web(db_id)
+    logger.debug(f"Reparse+Index documents for db_id {db_id}: {file_ids} {params=}")
+
+    operator_id = current_user.user_id
+    parse_allowed_statuses = {"uploaded", "error_parsing", "failed"}
+    index_allowed_statuses = {"parsed", "error_indexing", "done", "indexed"}
+    processing_statuses = {"processing", "waiting", "parsing", "indexing"}
+
+    async def run_reparse_index(context: TaskContext):
+        def _meta_of(data: dict | None) -> dict:
+            if isinstance(data, dict) and isinstance(data.get("meta"), dict):
+                return data["meta"]
+            return data or {}
+
+        await context.set_message("任务初始化")
+        await context.set_progress(5.0, "准备重解析并入库")
+
+        total = len(file_ids)
+        processed_items = []
+
+        try:
+            for idx, file_id in enumerate(file_ids, 1):
+                await context.raise_if_cancelled()
+                progress = 5.0 + (idx / total) * 90.0
+                await context.set_progress(progress, f"正在处理第 {idx}/{total} 个文档")
+
+                try:
+                    file_meta = _meta_of(await knowledge_base.get_file_basic_info(db_id, file_id))
+                except Exception:
+                    processed_items.append(
+                        {"file_id": file_id, "status": "failed", "error": "文件不存在或不属于当前知识库"}
+                    )
+                    continue
+
+                status = file_meta.get("status")
+                if status in processing_statuses:
+                    processed_items.append({"file_id": file_id, "status": "failed", "error": f"文件正在处理中: {status}"})
+                    continue
+
+                try:
+                    if status in parse_allowed_statuses:
+                        parsed_meta = _meta_of(await knowledge_base.parse_file(db_id, file_id, operator_id=current_user.user_id))
+                        status = parsed_meta.get("status")
+
+                    if status not in index_allowed_statuses:
+                        processed_items.append(
+                            {"file_id": file_id, "status": "failed", "error": f"文件状态不支持入库: {status}"}
+                        )
+                        continue
+
+                    if params:
+                        await knowledge_base.update_file_params(db_id, file_id, params, operator_id=operator_id)
+                    indexed_meta = _meta_of(await knowledge_base.index_file(db_id, file_id, operator_id=operator_id))
+                    processed_items.append(indexed_meta)
+                except Exception as e:
+                    logger.error(f"Reparse+Index failed for {file_id}: {e}")
+                    processed_items.append({"file_id": file_id, "status": "failed", "error": str(e)})
+
+        except Exception as e:
+            logger.exception(f"Reparse+Index task failed: {e}")
+            raise
+
+        failed_count = len([item for item in processed_items if "error" in item or item.get("status") == "failed"])
+        message_text = f"重解析并入库完成，失败 {failed_count} 个"
+        await context.set_result({"items": processed_items})
+        await context.set_progress(100.0, message_text)
+        return {"items": processed_items}
+
+    try:
+        database = await knowledge_base.get_database_info(db_id)
+        task = await tasker.enqueue(
+            name=f"文档重解析入库 ({database['name']})",
+            task_type="knowledge_reparse_index",
+            payload={"db_id": db_id, "file_ids": file_ids, "params": params},
+            coroutine=run_reparse_index,
+        )
+        return {"message": "重解析入库任务已提交", "status": "queued", "task_id": task.id}
     except Exception as e:
         return {"message": f"提交失败: {e}", "status": "failed"}
 
