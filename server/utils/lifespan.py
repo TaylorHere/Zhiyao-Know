@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from src.services.task_service import tasker
 from src.services.mcp_service import init_mcp_servers
 from src.services.first_run_seed_service import FirstRunSeedService
+from src.services.jingzhou_compliance_seed_service import JingzhouComplianceSeedService
 from src.services.kb_startup_recovery_service import recover_interrupted_kb_tasks_on_startup
 from src.storage.postgres.manager import pg_manager
 from src.knowledge import knowledge_base
@@ -34,7 +35,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Failed to initialize knowledge base manager: {e}")
 
-    # 启动自检：打印惠州营销隐藏库与智能体绑定状态
+    # 启动自检：打印荆州营销隐藏库与智能体绑定状态
     try:
         await FirstRunSeedService.log_startup_binding_status()
     except Exception as e:
@@ -47,6 +48,12 @@ async def lifespan(app: FastAPI):
         await recover_interrupted_kb_tasks_on_startup()
     except Exception as e:
         logger.error(f"Failed to recover interrupted KB tasks on startup: {e}")
+
+    # 启动导入：荆州一库两清单（存在种子文件时自动触发）
+    try:
+        await JingzhouComplianceSeedService.enqueue_startup_seed(operator_id=1, department_id=1)
+    except Exception as e:
+        logger.error(f"Failed to enqueue jingzhou compliance seed task: {e}")
 
     yield
     await tasker.shutdown()

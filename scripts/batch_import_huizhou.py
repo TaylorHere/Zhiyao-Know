@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-惠州电力局文件批量导入脚本
+荆州电力局文件批量导入脚本
 
 目录结构规则：
 - 文件所在的文件夹名称忽略（如"1.法律法规"、"2.标准"等分类目录）
@@ -718,7 +718,7 @@ class HuizhouImporter:
     async def run(self):
         """执行导入"""
         print("\n" + "="*60)
-        print("惠州电力局文件批量导入")
+        print("荆州电力局文件批量导入")
         print("="*60)
         print(f"源目录: {SOURCE_DIR}")
         print(f"模式: {'DRY-RUN (仅预览)' if self.dry_run else '实际执行'}")
@@ -847,7 +847,7 @@ class HuizhouImporter:
 
 
 async def main():
-    parser = argparse.ArgumentParser(description="惠州电力局文件批量导入")
+    parser = argparse.ArgumentParser(description="荆州电力局文件批量导入")
     parser.add_argument("--dry-run", action="store_true", help="仅预览，不实际执行")
     parser.add_argument("--concurrency", type=int, default=1, help="兼容参数，等同 --upload-concurrency")
     parser.add_argument("--upload-concurrency", type=int, default=None, help="单个知识库内文件上传并发数")

@@ -8,8 +8,8 @@ from .context import HuizhouPowerQAContext
 
 
 class HuizhouPowerQAAgent(BaseAgent):
-    name = "惠州电力整改问答助手"
-    description = "基于惠州电力整改方案 QA 知识库进行问答的专用智能体。"
+    name = "荆州电力整改问答助手"
+    description = "基于荆州电力整改方案 QA 知识库进行问答的专用智能体。"
     capabilities = ["file_upload"]
     context_schema = HuizhouPowerQAContext
 

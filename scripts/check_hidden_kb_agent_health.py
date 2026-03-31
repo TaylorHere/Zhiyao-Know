@@ -226,7 +226,7 @@ def run_all_checks(ctx: CheckContext) -> tuple[list[tuple[str, bool, str]], bool
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Health check for hidden KB and bound agent")
-    parser.add_argument("--kb-name", default="惠州营销部问答隐藏知识库")
+    parser.add_argument("--kb-name", default="荆州营销部问答隐藏知识库")
     parser.add_argument("--agent-id", default="HuizhouPowerQAAgent")
     parser.add_argument("--agent-config-id", type=int, default=9)
     parser.add_argument("--api-base", default="http://127.0.0.1:5050")

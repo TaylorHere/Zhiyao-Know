@@ -33,7 +33,7 @@ class SeedResult:
 class FirstRunSeedService:
     """首次初始化后自动种子数据服务（幂等）"""
 
-    KB_NAME = "惠州营销部问答隐藏知识库"
+    KB_NAME = "荆州营销部问答隐藏知识库"
     KB_DESC = "系统初始化自动导入，仅绑定 huizhou_power_qa 使用。"
     AGENT_ID = "HuizhouPowerQAAgent"
     DATASET_CSV = "hz_power_marketing_qa_dataset_20260320.csv"

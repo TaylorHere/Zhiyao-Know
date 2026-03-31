@@ -691,42 +691,47 @@ async def reparse_and_index_documents(
         processed_items = []
 
         try:
-            for idx, file_id in enumerate(file_ids, 1):
-                await context.raise_if_cancelled()
-                progress = 5.0 + (idx / total) * 90.0
-                await context.set_progress(progress, f"正在处理第 {idx}/{total} 个文档")
+            if total > 0:
+                index_concurrency = _resolve_index_concurrency(params)
+                await context.set_message(f"并发重解析入库中（并发 {index_concurrency}）")
+                semaphore = asyncio.Semaphore(index_concurrency)
+                progress_lock = asyncio.Lock()
+                done_count = 0
 
-                try:
-                    file_meta = _meta_of(await knowledge_base.get_file_basic_info(db_id, file_id))
-                except Exception:
-                    processed_items.append(
-                        {"file_id": file_id, "status": "failed", "error": "文件不存在或不属于当前知识库"}
-                    )
-                    continue
+                async def _reparse_index_one(file_id: str) -> dict:
+                    nonlocal done_count
+                    async with semaphore:
+                        await context.raise_if_cancelled()
+                        try:
+                            try:
+                                file_meta = _meta_of(await knowledge_base.get_file_basic_info(db_id, file_id))
+                            except Exception:
+                                return {"file_id": file_id, "status": "failed", "error": "文件不存在或不属于当前知识库"}
 
-                status = file_meta.get("status")
-                if status in processing_statuses:
-                    processed_items.append({"file_id": file_id, "status": "failed", "error": f"文件正在处理中: {status}"})
-                    continue
+                            status = file_meta.get("status")
+                            if status in processing_statuses:
+                                return {"file_id": file_id, "status": "failed", "error": f"文件正在处理中: {status}"}
 
-                try:
-                    if status in parse_allowed_statuses:
-                        parsed_meta = _meta_of(await knowledge_base.parse_file(db_id, file_id, operator_id=current_user.user_id))
-                        status = parsed_meta.get("status")
+                            if status in parse_allowed_statuses:
+                                parsed_meta = _meta_of(await knowledge_base.parse_file(db_id, file_id, operator_id=operator_id))
+                                status = parsed_meta.get("status")
 
-                    if status not in index_allowed_statuses:
-                        processed_items.append(
-                            {"file_id": file_id, "status": "failed", "error": f"文件状态不支持入库: {status}"}
-                        )
-                        continue
+                            if status not in index_allowed_statuses:
+                                return {"file_id": file_id, "status": "failed", "error": f"文件状态不支持入库: {status}"}
 
-                    if params:
-                        await knowledge_base.update_file_params(db_id, file_id, params, operator_id=operator_id)
-                    indexed_meta = _meta_of(await knowledge_base.index_file(db_id, file_id, operator_id=operator_id))
-                    processed_items.append(indexed_meta)
-                except Exception as e:
-                    logger.error(f"Reparse+Index failed for {file_id}: {e}")
-                    processed_items.append({"file_id": file_id, "status": "failed", "error": str(e)})
+                            if params:
+                                await knowledge_base.update_file_params(db_id, file_id, params, operator_id=operator_id)
+                            return _meta_of(await knowledge_base.index_file(db_id, file_id, operator_id=operator_id))
+                        except Exception as e:
+                            logger.error(f"Reparse+Index failed for {file_id}: {e}")
+                            return {"file_id": file_id, "status": "failed", "error": str(e)}
+                        finally:
+                            async with progress_lock:
+                                done_count += 1
+                                progress = 5.0 + (done_count / total) * 90.0
+                                await context.set_progress(progress, f"正在处理第 {done_count}/{total} 个文档")
+
+                processed_items = await asyncio.gather(*[_reparse_index_one(file_id) for file_id in file_ids])
 
         except Exception as e:
             logger.exception(f"Reparse+Index task failed: {e}")
