@@ -44,10 +44,11 @@ PASSWORD = os.getenv("YUXI_TEST_PASSWORD") or os.getenv("YUXI_SUPER_ADMIN_PASSWO
 PRESET_TOKEN = os.getenv("YUXI_TEST_TOKEN") or os.getenv("YUXI_ACCESS_TOKEN")
 HTTP_TIMEOUT = float(os.getenv("YUXI_HTTP_TIMEOUT", "6000"))
 LOGIN_RETRIES = int(os.getenv("YUXI_LOGIN_RETRIES", "20"))
-SOURCE_DIR = "/mnt/usb2/4.文件汇总"
+SOURCE_DIR = os.getenv("YUXI_BATCH_SOURCE_DIR", "/mnt/usb2/4.文件汇总")
 
 # 支持的文件类型
 SUPPORTED_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt", ".xls", ".xlsx", ".ppt", ".pptx"}
+ABNORMAL_FILE_STATUSES = {"failed", "error_parsing", "error_indexing"}
 
 
 def batched(items: list, size: int) -> list[list]:
@@ -152,6 +153,29 @@ class HuizhouImporter:
             "files_failed": 0,
             "ingest_tasks_submitted": 0,
         }
+        self.progress_total_kbs = 0
+        self.progress_total_files = 0
+        self.progress_done_kbs = 0
+        self.progress_done_files = 0
+
+    @staticmethod
+    def _build_progress_bar(done: int, total: int, width: int = 24) -> str:
+        if total <= 0:
+            return "[" + "-" * width + "] 0.0%"
+        ratio = min(max(done / total, 0.0), 1.0)
+        filled = int(width * ratio)
+        bar = "#" * filled + "-" * (width - filled)
+        return f"[{bar}] {ratio * 100:5.1f}%"
+
+    def print_progress(self, stage: str = ""):
+        kb_bar = self._build_progress_bar(self.progress_done_kbs, self.progress_total_kbs)
+        file_bar = self._build_progress_bar(self.progress_done_files, self.progress_total_files)
+        suffix = f" | {stage}" if stage else ""
+        print(
+            f"  进度{suffix}\n"
+            f"    知识库: {kb_bar} ({self.progress_done_kbs}/{self.progress_total_kbs})\n"
+            f"    文件:   {file_bar} ({self.progress_done_files}/{self.progress_total_files})"
+        )
     
     async def login(self):
         """登录获取token"""
@@ -553,11 +577,18 @@ class HuizhouImporter:
                         elif response.status_code == 409:
                             existing = await self.get_file_meta_by_filename(kb_id, filename)
                             if existing:
+                                status = (existing.get("status") or "").lower()
+                                if status in ABNORMAL_FILE_STATUSES:
+                                    print(
+                                        f"        ⚠️  文件已存在且状态异常，加入补漏队列 "
+                                        f"(file_id={existing['file_id']}, status={existing['status']})"
+                                    )
+                                    return {"kind": "existing_retry", **existing}
                                 print(
-                                    f"        ⚠️  文件已存在，加入补漏队列 "
+                                    f"        ℹ️  文件已存在且状态正常，直接跳过 "
                                     f"(file_id={existing['file_id']}, status={existing['status']})"
                                 )
-                                return {"kind": "existing", **existing}
+                                return {"kind": "existing_skip", **existing}
                             print(f"        ⚠️  文件已存在，但未查到对应记录，跳过")
                             return None
                         else:
@@ -655,7 +686,7 @@ class HuizhouImporter:
                 if minio_path and content_hash:
                     items.append(minio_path)
                     content_hashes[minio_path] = content_hash
-            elif item.get("kind") == "existing":
+            elif item.get("kind") == "existing_retry":
                 existing_files.append(item)
         
         try:
@@ -746,10 +777,13 @@ class HuizhouImporter:
         
         total_kbs = len(departments)
         total_files = sum(len(d["files"]) for d in departments)
+        self.progress_total_kbs = total_kbs
+        self.progress_total_files = total_files
         
         print(f"  部门数量: {len(unique_depts)} 个")
         print(f"  知识库数量: {total_kbs} 个")
         print(f"  文件数量: {total_files} 个")
+        self.print_progress("初始化")
         
         # 显示部门层级
         print("\n  部门层级预览:")
@@ -811,6 +845,8 @@ class HuizhouImporter:
             if self.upload_concurrency <= 1:
                 for file_path in files:
                     result = await self.upload_file(kb_id, file_path)
+                    self.progress_done_files += 1
+                    self.print_progress(f"上传文件: {os.path.basename(file_path)}")
                     if result:
                         file_infos.append(result)
             else:
@@ -818,21 +854,28 @@ class HuizhouImporter:
 
                 async def _upload_with_limit(path: str):
                     async with semaphore:
-                        return await self.upload_file(kb_id, path)
+                        return path, await self.upload_file(kb_id, path)
 
                 upload_tasks = [asyncio.create_task(_upload_with_limit(path)) for path in files]
-                upload_results = await asyncio.gather(*upload_tasks, return_exceptions=True)
-                for result in upload_results:
-                    if isinstance(result, Exception):
+                for task in asyncio.as_completed(upload_tasks):
+                    try:
+                        path, upload_result = await task
+                    except Exception as exc:
+                        self.progress_done_files += 1
                         self.stats["files_failed"] += 1
-                        print(f"      ❌ 并发上传任务异常: {type(result).__name__}: {result}")
+                        self.print_progress("并发上传任务异常")
+                        print(f"      ❌ 并发上传任务异常: {type(exc).__name__}: {exc}")
                         continue
-                    if result:
-                        file_infos.append(result)
+                    self.progress_done_files += 1
+                    self.print_progress(f"上传文件: {os.path.basename(path)}")
+                    if upload_result:
+                        file_infos.append(upload_result)
             
             # 添加文档并入库
             if file_infos:
                 await self.add_documents_to_kb(kb_id, kb_name, file_infos)
+            self.progress_done_kbs += 1
+            self.print_progress(f"完成知识库: {kb_name}")
         
         # 4. 完成
         print("\n" + "="*60)
@@ -847,7 +890,14 @@ class HuizhouImporter:
 
 
 async def main():
+    global SOURCE_DIR
     parser = argparse.ArgumentParser(description="荆州电力局文件批量导入")
+    parser.add_argument(
+        "--source-dir",
+        type=str,
+        default=SOURCE_DIR,
+        help=f"源目录路径（默认: {SOURCE_DIR}）",
+    )
     parser.add_argument("--dry-run", action="store_true", help="仅预览，不实际执行")
     parser.add_argument("--concurrency", type=int, default=1, help="兼容参数，等同 --upload-concurrency")
     parser.add_argument("--upload-concurrency", type=int, default=None, help="单个知识库内文件上传并发数")
@@ -856,6 +906,8 @@ async def main():
     parser.add_argument("--index-concurrency", type=int, default=2, help="透传给后端的入库并发参数")
     parser.add_argument("--no-auto-index", action="store_true", help="关闭自动入库，仅上传与解析")
     args = parser.parse_args()
+
+    SOURCE_DIR = args.source_dir
 
     upload_concurrency = args.upload_concurrency if args.upload_concurrency is not None else args.concurrency
     importer = HuizhouImporter(
