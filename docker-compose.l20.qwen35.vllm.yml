@@ -78,6 +78,20 @@ services:
       memlock:
         soft: -1
         hard: -1
+  kb-queue-redis:
+    extends:
+      file: docker-compose.yaml
+      service: kb-queue-redis
+
+    shm_size: 8g
+    ipc: host
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
   redis-exporter:
     extends:
       file: docker-compose.yaml
