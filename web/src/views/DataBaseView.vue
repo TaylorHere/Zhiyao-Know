@@ -219,7 +219,9 @@
             :class="{ active: selectedDatabaseId === database.db_id }"
             @click="selectDatabase(database.db_id)"
           >
-            <span class="database-name">{{ database.name }}</span>
+            <a-tooltip :title="database.name" placement="right">
+              <span class="database-name">{{ database.name }}</span>
+            </a-tooltip>
           </div>
         </div>
       </div>

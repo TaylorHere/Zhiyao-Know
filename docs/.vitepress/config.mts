@@ -46,6 +46,7 @@ export default defineConfig({
             { text: '智能体', link: '/latest/advanced/agents-config' },
             { text: '品牌自定义', link: '/latest/advanced/branding' },
             { text: '其他配置', link: '/latest/advanced/misc' },
+            { text: '运维参数（合规与并发）', link: '/latest/advanced/ops-env-compliance-and-workers' },
             { text: '生产部署', link: '/latest/advanced/deployment' }
           ]
         },
