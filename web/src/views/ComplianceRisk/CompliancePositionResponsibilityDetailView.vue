@@ -11,7 +11,6 @@
             <div class="gd-title">{{ record.title }}</div>
             <a-tag class="gd-dept">{{ record.department || '-' }}</a-tag>
           </div>
-          <div class="gd-code">岗位编号：{{ record.code }}</div>
         </div>
 
         <div class="gd-sections">
@@ -20,51 +19,53 @@
             <div class="gd-grid">
               <div class="gd-kv">
                 <div class="k">岗位名称</div>
-                <div class="v">{{ record.title }}</div>
+                <div class="v">{{ record.title || '-' }}</div>
               </div>
               <div class="gd-kv">
-                <div class="k">所属部门</div>
+                <div class="k">部门名称</div>
                 <div class="v">{{ record.department || '-' }}</div>
               </div>
               <div class="gd-kv">
-                <div class="k">合规类型</div>
-                <div class="v">
-                  <a-tag class="gd-type">{{ record.compliance_type || '-' }}</a-tag>
-                </div>
+                <div class="k">创建时间</div>
+                <div class="v">{{ record.created_at || '-' }}</div>
               </div>
               <div class="gd-kv">
-                <div class="k">岗位层级</div>
-                <div class="v">{{ record.level || '-' }}</div>
+                <div class="k">更新时间</div>
+                <div class="v">{{ record.updated_at || '-' }}</div>
               </div>
             </div>
           </div>
 
           <div class="gd-section">
-            <div class="gd-section-title">岗位职责</div>
-            <div class="gd-text">
-              <ol class="gd-ol">
-                <li v-for="(p, idx) in record.responsibilities || []" :key="idx">{{ p }}</li>
-              </ol>
-            </div>
+            <div class="gd-section-title">风险内控合规职责</div>
+            <div class="gd-text">{{ normalizeText(record.responsibilities) }}</div>
           </div>
 
           <div class="gd-section">
-            <div class="gd-section-title">合规要点</div>
-            <div class="gd-text">
-              <ol class="gd-ol">
-                <li v-for="(p, idx) in record.compliance_points || []" :key="idx">{{ p }}</li>
-              </ol>
-            </div>
+            <div class="gd-section-title">合规底线清单</div>
+            <div class="gd-text">{{ normalizeText(record.compliance_points) }}</div>
           </div>
 
           <div class="gd-section">
             <div class="gd-section-title">底线标准与处罚</div>
-            <div class="gd-text">{{ record.bottom_line_penalty || '-' }}</div>
+            <div class="gd-text">{{ normalizeText(record.bottom_line_penalty) }}</div>
           </div>
 
           <div class="gd-section">
-            <div class="gd-section-title">合规义务来源</div>
-            <div class="gd-text">{{ record.source_basis || '-' }}</div>
+            <div class="gd-section-title">制度依据</div>
+            <div class="gd-text">{{ normalizeText(record.related_risks) }}</div>
+          </div>
+
+          <div class="gd-section">
+            <div class="gd-section-title">合规义务来源（内外部制度依据）</div>
+            <div class="gd-text">
+              <div class="gd-blocks">
+                <div v-for="(item, idx) in sourceBasisBlocks" :key="idx" class="gd-block">
+                  <div class="gd-block-title">{{ item.title }}</div>
+                  <div class="gd-block-content">{{ item.content || '-' }}</div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -74,7 +75,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 
@@ -85,6 +86,13 @@ const router = useRouter()
 
 const loading = ref(false)
 const record = ref({})
+const sourceBasisBlocks = computed(() => {
+  const basisMap = parseSourceBasisMap(record.value.source_basis)
+  return [
+    { title: '法律法规、国家政策', content: basisMap.external },
+    { title: '内部制度', content: basisMap.internal },
+  ]
+})
 
 const fetchDetail = async () => {
   const id = Number(route.params.position_id)
@@ -98,6 +106,69 @@ const fetchDetail = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const normalizeText = (value) => {
+  if (Array.isArray(value)) {
+    const lines = value.map((item) => String(item || '').trim()).filter(Boolean)
+    return lines.length > 0 ? lines.join('\n') : '-'
+  }
+  const text = String(value || '').trim()
+  return text || '-'
+}
+
+const parseLabeledSections = (value, labels) => {
+  const raw = String(value || '')
+    .replace(/\r/g, '')
+    .trim()
+  if (!raw) return []
+
+  const matches = []
+  for (const label of labels) {
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const regex = new RegExp(`(?:^|\\n)${escaped}[:：]\\s*`, 'g')
+    let m
+    while ((m = regex.exec(raw)) !== null) {
+      const hasLeadingNewline = m[0].startsWith('\n')
+      matches.push({
+        label,
+        index: m.index + (hasLeadingNewline ? 1 : 0),
+        length: m[0].length - (hasLeadingNewline ? 1 : 0),
+      })
+    }
+  }
+  if (matches.length === 0) return []
+  matches.sort((a, b) => a.index - b.index)
+
+  const sections = []
+  for (let i = 0; i < matches.length; i++) {
+    const cur = matches[i]
+    const contentStart = cur.index + cur.length
+    const contentEnd = i + 1 < matches.length ? matches[i + 1].index : raw.length
+    const content = raw.slice(contentStart, contentEnd).trim()
+    if (content) {
+      sections.push({ title: cur.label, content })
+    }
+  }
+  return sections
+}
+
+const parseSourceBasisMap = (value) => {
+  const sections = parseLabeledSections(value, ['法律法规国家政策', '法律法规、国家政策', '内部制度'])
+  const map = { external: '', internal: '' }
+  for (const item of sections) {
+    if (item.title.includes('内部制度')) {
+      map.internal = item.content
+      continue
+    }
+    if (item.title.includes('法律法规国家政策') || item.title.includes('法律法规、国家政策')) {
+      map.external = item.content
+    }
+  }
+  if (!map.external && !map.internal) {
+    map.external = normalizeText(value) === '-' ? '' : normalizeText(value)
+  }
+  return map
 }
 
 const goBack = () => {
@@ -197,13 +268,6 @@ onMounted(fetchDetail)
   }
 }
 
-.gd-type {
-  background: rgba(59, 130, 246, 0.08);
-  color: var(--gray-700);
-  border: none;
-  border-radius: 10px;
-}
-
 .gd-text {
   font-size: 13px;
   color: var(--gray-900);
@@ -211,8 +275,39 @@ onMounted(fetchDetail)
   white-space: pre-wrap;
 }
 
-.gd-ol {
-  margin: 0;
-  padding-left: 18px;
+.gd-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gd-line {
+  white-space: pre-wrap;
+}
+
+.gd-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gd-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  background: var(--gray-50);
+}
+
+.gd-block-title {
+  font-size: 12px;
+  color: var(--gray-700);
+  font-weight: 700;
+}
+
+.gd-block-content {
+  white-space: pre-wrap;
 }
 </style>

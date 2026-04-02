@@ -62,6 +62,16 @@ def _cell(ws, row_no: int, col_no: int | None) -> str:
     return _normalize_text(value)
 
 
+def _join_labeled_sections(pairs: list[tuple[str, str]]) -> str:
+    blocks: list[str] = []
+    for label, content in pairs:
+        text = _normalize_text(content)
+        if not text:
+            continue
+        blocks.append(f"{label}：\n{text}")
+    return "\n\n".join(blocks)
+
+
 def _find_columns(
     ws,
     column_candidates: dict[str, list[str]],
@@ -81,7 +91,7 @@ def _find_columns(
                     candidate_norm = _normalize_header(candidate)
                     if not candidate_norm:
                         continue
-                    if candidate_norm == cell_norm or candidate_norm in cell_norm:
+                    if candidate_norm == cell_norm or cell_norm.startswith(candidate_norm):
                         prev = matched.get(key)
                         # 优先保留更靠前的表头匹配，避免“其他/备注”等正文词命中后把 header_row 推到很后面。
                         if prev is None or row_no <= prev[0]:
@@ -166,15 +176,16 @@ def _parse_risk_library(file_name: str, workbook) -> list[dict[str, Any]]:
                 level = raw_level[:20]
             business_lv1 = _cell(ws, row_no, columns.get("business_lv1")) or business_lv1
             business_lv2 = _cell(ws, row_no, columns.get("business_lv2")) or business_lv2
-            basis_parts = [
-                _cell(ws, row_no, columns.get("basis_policy")),
-                _cell(ws, row_no, columns.get("basis_law")),
-                _cell(ws, row_no, columns.get("basis_regulation")),
-                _cell(ws, row_no, columns.get("basis_industry")),
-                _cell(ws, row_no, columns.get("basis_internal")),
-                _cell(ws, row_no, columns.get("basis_other")),
-            ]
-            basis = "\n".join([item for item in basis_parts if item])
+            basis = _join_labeled_sections(
+                [
+                    ("国家政策", _cell(ws, row_no, columns.get("basis_policy"))),
+                    ("法律法规", _cell(ws, row_no, columns.get("basis_law"))),
+                    ("监管规定", _cell(ws, row_no, columns.get("basis_regulation"))),
+                    ("行业准则", _cell(ws, row_no, columns.get("basis_industry"))),
+                    ("规章制度", _cell(ws, row_no, columns.get("basis_internal"))),
+                    ("其他", _cell(ws, row_no, columns.get("basis_other"))),
+                ]
+            )
             measures = _split_items(_cell(ws, row_no, columns.get("measures")))
             chips = [item for item in [business_lv1, business_lv2, department] if item]
 
@@ -244,14 +255,10 @@ def _parse_process_checklist(file_name: str, workbook) -> list[dict[str, Any]]:
             level3_process = _cell(ws, row_no, columns.get("level3_process")) or level3_process
             risk_desc = _cell(ws, row_no, columns.get("risk_desc"))
             risk_points = _cell(ws, row_no, columns.get("risk_points"))
-            source_basis = "\n".join(
+            source_basis = _join_labeled_sections(
                 [
-                    item
-                    for item in [
-                        _cell(ws, row_no, columns.get("source_external")),
-                        _cell(ws, row_no, columns.get("source_internal")),
-                    ]
-                    if item
+                    ("法律法规国家政策", _cell(ws, row_no, columns.get("source_external"))),
+                    ("内部制度", _cell(ws, row_no, columns.get("source_internal"))),
                 ]
             )
             compliance_points_text = _cell(ws, row_no, columns.get("compliance_points"))
@@ -305,14 +312,10 @@ def _parse_position_responsibility(file_name: str, workbook) -> list[dict[str, A
                 continue
 
             code = _safe_code("GW", ws.title, row_no, f"{department}-{title}")
-            source_basis = "\n".join(
+            source_basis = _join_labeled_sections(
                 [
-                    item
-                    for item in [
-                        _cell(ws, row_no, columns.get("source_external")),
-                        _cell(ws, row_no, columns.get("source_internal")),
-                    ]
-                    if item
+                    ("法律法规国家政策", _cell(ws, row_no, columns.get("source_external"))),
+                    ("内部制度", _cell(ws, row_no, columns.get("source_internal"))),
                 ]
             )
 
