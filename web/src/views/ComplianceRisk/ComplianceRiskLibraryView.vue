@@ -231,7 +231,8 @@ watch(
 }
 
 .rl-select {
-  width: 130px;
+  width: 320px;
+  max-width: 100%;
 }
 
 .rl-summary {

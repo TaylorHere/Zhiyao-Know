@@ -213,7 +213,8 @@ watch(
 }
 
 .pc-select {
-  width: 140px;
+  width: 320px;
+  max-width: 100%;
 }
 
 .pc-summary {

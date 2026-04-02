@@ -144,7 +144,7 @@ def _parse_risk_library(file_name: str, workbook) -> list[dict[str, Any]]:
 
         business_lv1 = ""
         business_lv2 = ""
-        department = ""
+        department = ws.title.strip()
         for row_no in range(header_row + 1, ws.max_row + 1):
             title = _cell(ws, row_no, columns.get("title"))
             code = _cell(ws, row_no, columns.get("code"))
@@ -166,7 +166,6 @@ def _parse_risk_library(file_name: str, workbook) -> list[dict[str, Any]]:
                 level = raw_level[:20]
             business_lv1 = _cell(ws, row_no, columns.get("business_lv1")) or business_lv1
             business_lv2 = _cell(ws, row_no, columns.get("business_lv2")) or business_lv2
-            department = _cell(ws, row_no, columns.get("department")) or department
             basis_parts = [
                 _cell(ws, row_no, columns.get("basis_policy")),
                 _cell(ws, row_no, columns.get("basis_law")),
@@ -230,7 +229,7 @@ def _parse_process_checklist(file_name: str, workbook) -> list[dict[str, Any]]:
         level1_process = ""
         level2_process = ""
         level3_process = ""
-        department = ""
+        department = ws.title.strip()
         for row_no in range(header_row + 1, ws.max_row + 1):
             code = _cell(ws, row_no, columns.get("code"))
             title = _cell(ws, row_no, columns.get("title"))
@@ -243,7 +242,6 @@ def _parse_process_checklist(file_name: str, workbook) -> list[dict[str, Any]]:
             level1_process = _cell(ws, row_no, columns.get("level1_process")) or level1_process
             level2_process = _cell(ws, row_no, columns.get("level2_process")) or level2_process
             level3_process = _cell(ws, row_no, columns.get("level3_process")) or level3_process
-            department = _cell(ws, row_no, columns.get("department")) or department
             risk_desc = _cell(ws, row_no, columns.get("risk_desc"))
             risk_points = _cell(ws, row_no, columns.get("risk_points"))
             source_basis = "\n".join(
@@ -295,12 +293,11 @@ def _parse_position_responsibility(file_name: str, workbook) -> list[dict[str, A
                 "bottom_line_penalty": ["底线标准与处罚"],
                 "related_risks": ["制度依据"],
             },
-            required={"department", "title"},
+            required={"title"},
         )
 
-        department = ""
+        department = ws.title.strip()
         for row_no in range(header_row + 1, ws.max_row + 1):
-            department = _cell(ws, row_no, columns.get("department")) or department
             title = _cell(ws, row_no, columns.get("title"))
             if not department and not title:
                 continue

@@ -30,9 +30,8 @@ const router = useRouter()
 const menus = computed(() => [
   { key: 'knowledge', label: '合规知识中心', to: '/compliance-risk/knowledge' },
   { key: 'risk-library', label: '合规风险库', to: '/compliance-risk/risk-library' },
-  // 先保留占位，后续你需要我再补页面
-  { key: 'process', label: '流程管理清单', to: '/compliance-risk/process-checklist' },
-  { key: 'position', label: '岗位合规职责清单', to: '/compliance-risk/position-responsibility' },
+  { key: 'process', label: '业务流程管控清单', to: '/compliance-risk/process-checklist' },
+  { key: 'position', label: '重要岗位履责合规义务清单', to: '/compliance-risk/position-responsibility' },
   { key: 'import', label: '数据导入', to: '/compliance-risk/data-import' }
 ])
 

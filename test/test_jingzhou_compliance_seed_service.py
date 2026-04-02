@@ -54,3 +54,10 @@ def test_convert_workbook_keeps_empty_sheet_md(tmp_path: Path) -> None:
     assert "# 空Sheet" in content
     assert "- 记录数: 0" in content
     assert "本 sheet 未抽取到可入库记录" in content
+
+
+def test_resolve_chunk_params_use_separator_as_chunk(monkeypatch) -> None:
+    monkeypatch.delenv("YUXI_JINGZHOU_COMPLIANCE_QA_SEPARATOR", raising=False)
+    params = JingzhouComplianceSeedService._resolve_chunk_params()
+    assert params["qa_separator"] == "\n---\n"
+    assert params["separator_as_chunk"] is True

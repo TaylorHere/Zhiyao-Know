@@ -116,15 +116,20 @@ def split_text_into_chunks(text: str, file_id: str, filename: str, params: dict 
         chunk_overlap=chunk_overlap,
     )
 
-    # 如果设置了分隔符，先分割后以当前的分割逻辑处理
+    separator_as_chunk = bool(params.get("separator_as_chunk", False))
+
+    # 如果设置了分隔符，先分割后处理
     if separator:
         # 转换分隔符为可视格式（换行符显示为 \n）
         separator_display = separator.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
         logger.debug(f"启用预分割模式，使用分隔符: '{separator_display}'")
-        pre_chunks = text.split(separator)
-        text_chunks = []
-        for pre_chunk in pre_chunks:
-            if pre_chunk.strip():
+        pre_chunks = [pre_chunk.strip() for pre_chunk in text.split(separator) if pre_chunk and pre_chunk.strip()]
+        if separator_as_chunk:
+            # 按分隔符直接成块，不再受 chunk_size 约束，适合结构化 Excel->Markdown 记录。
+            text_chunks = pre_chunks
+        else:
+            text_chunks = []
+            for pre_chunk in pre_chunks:
                 text_chunks.extend(text_splitter.split_text(pre_chunk))
     else:
         text_chunks = text_splitter.split_text(text)

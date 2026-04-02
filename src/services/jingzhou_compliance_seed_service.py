@@ -36,6 +36,7 @@ class JingzhouComplianceSeedService:
     CHUNK_SIZE_ENV = "YUXI_JINGZHOU_COMPLIANCE_CHUNK_SIZE"
     CHUNK_OVERLAP_ENV = "YUXI_JINGZHOU_COMPLIANCE_CHUNK_OVERLAP"
     INDEX_CONCURRENCY_ENV = "YUXI_JINGZHOU_COMPLIANCE_INDEX_CONCURRENCY"
+    QA_SEPARATOR_ENV = "YUXI_JINGZHOU_COMPLIANCE_QA_SEPARATOR"
     SEARCH_MODE_ENV = "YUXI_JINGZHOU_COMPLIANCE_SEARCH_MODE"
     TOP_K_ENV = "YUXI_JINGZHOU_COMPLIANCE_TOP_K"
     KEYWORD_TOP_K_ENV = "YUXI_JINGZHOU_COMPLIANCE_KEYWORD_TOP_K"
@@ -104,11 +105,14 @@ class JingzhouComplianceSeedService:
         chunk_size = int(os.getenv(cls.CHUNK_SIZE_ENV, "2200"))
         chunk_overlap = int(os.getenv(cls.CHUNK_OVERLAP_ENV, "200"))
         index_concurrency = int(os.getenv(cls.INDEX_CONCURRENCY_ENV, "4"))
+        qa_separator = os.getenv(cls.QA_SEPARATOR_ENV, "\n---\n")
         return {
             "chunk_size": max(256, chunk_size),
             "chunk_overlap": max(0, min(chunk_overlap, max(0, chunk_size - 1))),
             "index_concurrency": max(1, index_concurrency),
-            "qa_separator": "",
+            # Excel 转 Markdown 的结构化记录优先按分隔符切块，避免固定 chunk_size 打散单条记录。
+            "qa_separator": qa_separator,
+            "separator_as_chunk": True,
             "content_type": "file",
             "auto_index": False,
         }

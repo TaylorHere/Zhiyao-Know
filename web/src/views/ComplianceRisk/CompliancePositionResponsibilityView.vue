@@ -209,7 +209,8 @@ watch(
 }
 
 .pr-select {
-  width: 140px;
+  width: 320px;
+  max-width: 100%;
 }
 
 .pr-summary {

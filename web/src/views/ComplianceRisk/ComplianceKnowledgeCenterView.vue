@@ -6,9 +6,9 @@
 
       <div class="hero-search">
         <a-select v-model:value="searchTarget" class="hero-target-select">
-          <a-select-option value="risk-library">风险库</a-select-option>
-          <a-select-option value="process-checklist">流程清单</a-select-option>
-          <a-select-option value="position-responsibility">岗位清单</a-select-option>
+          <a-select-option value="risk-library">合规风险库</a-select-option>
+          <a-select-option value="process-checklist">业务流程管控清单</a-select-option>
+          <a-select-option value="position-responsibility">重要岗位履责合规义务清单</a-select-option>
         </a-select>
         <a-input
           v-model:value="keyword"
@@ -108,7 +108,7 @@ const quickEntries = computed(() => {
     },
     {
       key: 'process-checklist',
-      name: '流程管控清单',
+      name: '业务流程管控清单',
       desc: '业务流程与准入管控',
       count: summary.value.counts.process_checklist || 0,
       tone: 'purple',
@@ -116,7 +116,7 @@ const quickEntries = computed(() => {
     },
     {
       key: 'position-responsibility',
-      name: '岗位职责清单',
+      name: '重要岗位履责合规义务清单',
       desc: '岗位合规职责体系',
       count: summary.value.counts.position_responsibility || 0,
       tone: 'green',
