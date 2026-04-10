@@ -333,7 +333,7 @@ services:
     restart: unless-stopped
 
   vllm-qwen3-embedding-cpu:
-    image: ${VLLM_OPENAI_CPU_IMAGE:-docker.m.daocloud.io/vllm/vllm-openai-cpu:latest}
+    image: ${VLLM_OPENAI_IMAGE:-docker.m.daocloud.io/vllm/vllm-openai:latest}
     container_name: vllm-qwen3-embedding-cpu
     command:
       - --model
@@ -348,12 +348,14 @@ services:
       - "8001"
       - --max-model-len
       - "8192"
+      - --dtype
+      - half
+      - --gpu-memory-utilization
+      - ${VLLM_EMBED_GPU_MEMORY_UTILIZATION:-0.06}
       - --enforce-eager
       - --trust-remote-code
     environment:
-      - CUDA_VISIBLE_DEVICES=
-      - VLLM_CPU_OMP_THREADS_BIND=nobind
-      - VLLM_CPU_KVCACHE_SPACE=1
+      - CUDA_VISIBLE_DEVICES=${VLLM_EMBED_GPU_DEVICE:-1}
     volumes:
       - ${MODEL_DIR:-./models}:/models
       - ./docker/volumes/vllm/hf-cache:/root/.cache/huggingface
@@ -374,6 +376,16 @@ services:
       memlock:
         soft: -1
         hard: -1
+      stack:
+        soft: 67108864
+        hard: 67108864
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${VLLM_EMBED_GPU_DEVICE:-1}"]
+              capabilities: [gpu]
     shm_size: 8g
     ipc: host
     restart: unless-stopped
