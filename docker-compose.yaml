@@ -83,6 +83,166 @@ services:
       kb-queue-redis:
         condition: service_started
 
+  api-worker:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    image: yuxi-api:0.5.dev
+    container_name: api-worker-dev
+    working_dir: /app
+    volumes:
+      - ./server:/app/server
+      - ./src:/app/src
+      - ./saves:/app/saves
+      - ./test:/app/test
+      - ./scripts:/app/scripts
+      - ./.env:/app/.env
+      - ${MODEL_DIR:-./models}:/models
+      - ./data/qa_datasets/:/app/saves/qa_datasets/
+      - ./docker/nltk_data:/app/nltk_data:ro
+    networks:
+      - app-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - .env
+    environment:
+      - NLTK_DATA=/app/nltk_data
+      - HOST_IP=${HOST_IP:-}
+      - YUXI_INDEX_CONCURRENCY=${YUXI_INDEX_CONCURRENCY:-1}
+      - YUXI_PROCESSING_QUEUE_REDIS_URL=${YUXI_PROCESSING_QUEUE_REDIS_URL:-redis://kb-queue-redis:6379/0}
+      - YUXI_PROCESSING_QUEUE_REDIS_TIMEOUT=${YUXI_PROCESSING_QUEUE_REDIS_TIMEOUT:-1.0}
+      - YUXI_PROCESSING_STALE_SECONDS=${YUXI_PROCESSING_STALE_SECONDS:-600}
+      - POSTGRES_URL=${POSTGRES_URL:-postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-yuxi_know}}
+      - POSTGRES_POOL_SIZE=${POSTGRES_POOL_SIZE:-40}
+      - POSTGRES_MAX_OVERFLOW=${POSTGRES_MAX_OVERFLOW:-20}
+      - POSTGRES_POOL_TIMEOUT=${POSTGRES_POOL_TIMEOUT:-60}
+      - POSTGRES_POOL_RECYCLE=${POSTGRES_POOL_RECYCLE:-1800}
+      - NEO4J_URI=${NEO4J_URI:-bolt://graph:7687}
+      - NEO4J_USERNAME=${NEO4J_USERNAME:-neo4j}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-0123456789}
+      - MILVUS_URI=${MILVUS_URI:-http://milvus:19530}
+      - MILVUS_DB_NAME=${MILVUS_DB_NAME:-default}
+      - MILVUS_TOKEN=${MILVUS_TOKEN:-}
+      - MINERU_VL_SERVER=${MINERU_VL_SERVER:-http://mineru-vllm-server:30000}
+      - MINERU_API_URI=${MINERU_API_URI:-http://mineru-api:30001}
+      - PADDLEX_URI=${PADDLEX_URI:-http://paddlex:8080}
+      - MINIO_URI=${MINIO_URI:-http://milvus-minio:9000}
+      - MODEL_DIR_IN_DOCKER=/models
+      - RUNNING_IN_DOCKER=true
+      - NO_PROXY=localhost,127.0.0.1,milvus,graph,milvus-minio,milvus-etcd-dev,etcd,minio,mineru,paddlex,api.siliconflow.cn
+      - no_proxy=localhost,127.0.0.1,milvus,graph,milvus-minio,milvus-etcd-dev,etcd,minio,mineru,paddlex,api.siliconflow.cn
+    command: sh -c "PYTHONPATH=/app python /app/scripts/run_kb_worker.py"
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
+    shm_size: 8g
+    ipc: host
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      graph:
+        condition: service_healthy
+      milvus:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      kb-queue-redis:
+        condition: service_started
+
+  kb-recover-cron:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    image: yuxi-api:0.5.dev
+    container_name: kb-recover-cron-dev
+    working_dir: /app
+    volumes:
+      - ./server:/app/server
+      - ./src:/app/src
+      - ./saves:/app/saves
+      - ./test:/app/test
+      - ./scripts:/app/scripts
+      - ./.env:/app/.env
+      - ${MODEL_DIR:-./models}:/models
+      - ./data/qa_datasets/:/app/saves/qa_datasets/
+      - ./docker/nltk_data:/app/nltk_data:ro
+    networks:
+      - app-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - .env
+    environment:
+      - NLTK_DATA=/app/nltk_data
+      - HOST_IP=${HOST_IP:-}
+      - YUXI_API_BASE_URL=${YUXI_API_BASE_URL:-http://api:5050}
+      - YUXI_KB_RECOVER_CRON_ENABLED=${YUXI_KB_RECOVER_CRON_ENABLED:-true}
+      - YUXI_KB_RECOVER_CRON_INTERVAL=${YUXI_KB_RECOVER_CRON_INTERVAL:-7200}
+      - YUXI_PROCESSING_QUEUE_REDIS_URL=${YUXI_PROCESSING_QUEUE_REDIS_URL:-redis://kb-queue-redis:6379/0}
+      - YUXI_PROCESSING_QUEUE_REDIS_TIMEOUT=${YUXI_PROCESSING_QUEUE_REDIS_TIMEOUT:-1.0}
+      - YUXI_PROCESSING_STALE_SECONDS=${YUXI_PROCESSING_STALE_SECONDS:-600}
+      - POSTGRES_URL=${POSTGRES_URL:-postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-yuxi_know}}
+      - POSTGRES_POOL_SIZE=${POSTGRES_POOL_SIZE:-40}
+      - POSTGRES_MAX_OVERFLOW=${POSTGRES_MAX_OVERFLOW:-20}
+      - POSTGRES_POOL_TIMEOUT=${POSTGRES_POOL_TIMEOUT:-60}
+      - POSTGRES_POOL_RECYCLE=${POSTGRES_POOL_RECYCLE:-1800}
+      - NEO4J_URI=${NEO4J_URI:-bolt://graph:7687}
+      - NEO4J_USERNAME=${NEO4J_USERNAME:-neo4j}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-0123456789}
+      - MILVUS_URI=${MILVUS_URI:-http://milvus:19530}
+      - MILVUS_DB_NAME=${MILVUS_DB_NAME:-default}
+      - MILVUS_TOKEN=${MILVUS_TOKEN:-}
+      - MINERU_VL_SERVER=${MINERU_VL_SERVER:-http://mineru-vllm-server:30000}
+      - MINERU_API_URI=${MINERU_API_URI:-http://mineru-api:30001}
+      - PADDLEX_URI=${PADDLEX_URI:-http://paddlex:8080}
+      - MINIO_URI=${MINIO_URI:-http://milvus-minio:9000}
+      - MODEL_DIR_IN_DOCKER=/models
+      - RUNNING_IN_DOCKER=true
+      - NO_PROXY=localhost,127.0.0.1,milvus,graph,milvus-minio,milvus-etcd-dev,etcd,minio,mineru,paddlex,api.siliconflow.cn
+      - no_proxy=localhost,127.0.0.1,milvus,graph,milvus-minio,milvus-etcd-dev,etcd,minio,mineru,paddlex,api.siliconflow.cn
+    command:
+      - /bin/sh
+      - -c
+      - >
+        if [ "$${YUXI_KB_RECOVER_CRON_ENABLED}" != "true" ]; then
+          echo "kb-recover-cron disabled by YUXI_KB_RECOVER_CRON_ENABLED";
+          sleep infinity;
+        fi;
+        while true; do
+          echo "[kb-recover-cron] run at $(date '+%Y-%m-%d %H:%M:%S')";
+          set -a; . /app/.env; set +a;
+          if ! curl -fsS "$${YUXI_API_BASE_URL}/api/system/health" >/dev/null; then
+            echo "[kb-recover-cron] api not ready, skip this round";
+            sleep 30;
+            continue;
+          fi;
+          python3 /app/scripts/recover_kb_parse_index_tasks.py || true;
+          sleep "$${YUXI_KB_RECOVER_CRON_INTERVAL}";
+        done
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
+    shm_size: 8g
+    ipc: host
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+      api-worker:
+        condition: service_started
+      kb-queue-redis:
+        condition: service_started
+
   crawler:
     build:
       context: .

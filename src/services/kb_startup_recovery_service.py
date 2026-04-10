@@ -34,7 +34,7 @@ def _env_int(name: str, default: int, minimum: int = 1) -> int:
 async def _count_active_tasks() -> int:
     async with pg_manager.get_async_session_context() as session:
         result = await session.execute(
-            text("SELECT count(1) FROM tasks WHERE status IN ('queued', 'running')")
+            text("SELECT count(1) FROM tasks WHERE status IN ('pending', 'running')")
         )
         return int(result.scalar_one() or 0)
 

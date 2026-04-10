@@ -36,6 +36,71 @@ services:
       memlock:
         soft: -1
         hard: -1
+  api-worker:
+    extends:
+      file: docker-compose.yaml
+      service: api-worker
+    environment:
+      - VLLM_CHAT_BASE_URL=${VLLM_CHAT_BASE_URL:-http://vllm-qwen35-35b-a3b-fp8:8000/v1}
+      - VLLM_CHAT_MODEL=${VLLM_CHAT_MODEL:-Qwen3.5-35B-A3B-FP8}
+      - VLLM_EMBED_BASE_URL=${VLLM_EMBED_BASE_URL:-http://vllm-qwen3-embedding-cpu:8001/v1/embeddings}
+      - VLLM_EMBED_MODEL=${VLLM_EMBED_MODEL:-Qwen3-Embedding-0.6B}
+      - VLLM_RERANK_BASE_URL=${VLLM_RERANK_BASE_URL:-http://vllm-bge-reranker-v2-m3-cpu:8002/v1/rerank}
+      - VLLM_RERANK_MODEL=${VLLM_RERANK_MODEL:-bge-reranker-v2-m3}
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+      - PYTHONUTF8=1
+      - TIKTOKEN_CACHE_DIR=/tmp/data-gym-cache
+      - YUXI_CHAT_CONTEXT_WINDOW=${YUXI_CHAT_CONTEXT_WINDOW:-16384}
+      - YUXI_CHAT_INPUT_TOKEN_RATIO=${YUXI_CHAT_INPUT_TOKEN_RATIO:-0.9}
+      - YUXI_CHAT_OUTPUT_TOKEN_RESERVE=${YUXI_CHAT_OUTPUT_TOKEN_RESERVE:-1024}
+    command:
+      - /bin/sh
+      - -c
+      - >
+        python -c "import hashlib,shutil,os;from pathlib import Path;src=Path('/app/docker/tiktoken/encodings');cache=Path(os.getenv('TIKTOKEN_CACHE_DIR','/tmp/data-gym-cache'));cache.mkdir(parents=True,exist_ok=True);m={'https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken':'o200k_base.tiktoken','https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken':'cl100k_base.tiktoken','https://openaipublic.blob.core.windows.net/encodings/p50k_base.tiktoken':'p50k_base.tiktoken','https://openaipublic.blob.core.windows.net/encodings/r50k_base.tiktoken':'r50k_base.tiktoken','https://openaipublic.blob.core.windows.net/gpt-2/encodings/main/vocab.bpe':'gpt2_vocab.bpe','https://openaipublic.blob.core.windows.net/gpt-2/encodings/main/encoder.json':'gpt2_encoder.json'};[(shutil.copyfile(src/fn,cache/hashlib.sha1(url.encode()).hexdigest()) if (src/fn).exists() else None) for url,fn in m.items()]";
+        exec env PYTHONPATH=/app python /app/scripts/run_kb_worker.py
+    volumes:
+      - ./docker/tiktoken/encodings:/app/docker/tiktoken/encodings:ro
+
+    shm_size: 8g
+    ipc: host
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
+  kb-recover-cron:
+    extends:
+      file: docker-compose.yaml
+      service: kb-recover-cron
+    environment:
+      - VLLM_CHAT_BASE_URL=${VLLM_CHAT_BASE_URL:-http://vllm-qwen35-35b-a3b-fp8:8000/v1}
+      - VLLM_CHAT_MODEL=${VLLM_CHAT_MODEL:-Qwen3.5-35B-A3B-FP8}
+      - VLLM_EMBED_BASE_URL=${VLLM_EMBED_BASE_URL:-http://vllm-qwen3-embedding-cpu:8001/v1/embeddings}
+      - VLLM_EMBED_MODEL=${VLLM_EMBED_MODEL:-Qwen3-Embedding-0.6B}
+      - VLLM_RERANK_BASE_URL=${VLLM_RERANK_BASE_URL:-http://vllm-bge-reranker-v2-m3-cpu:8002/v1/rerank}
+      - VLLM_RERANK_MODEL=${VLLM_RERANK_MODEL:-bge-reranker-v2-m3}
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+      - PYTHONUTF8=1
+      - TIKTOKEN_CACHE_DIR=/tmp/data-gym-cache
+      - YUXI_CHAT_CONTEXT_WINDOW=${YUXI_CHAT_CONTEXT_WINDOW:-16384}
+      - YUXI_CHAT_INPUT_TOKEN_RATIO=${YUXI_CHAT_INPUT_TOKEN_RATIO:-0.9}
+      - YUXI_CHAT_OUTPUT_TOKEN_RESERVE=${YUXI_CHAT_OUTPUT_TOKEN_RESERVE:-1024}
+    volumes:
+      - ./docker/tiktoken/encodings:/app/docker/tiktoken/encodings:ro
+    shm_size: 8g
+    ipc: host
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+      memlock:
+        soft: -1
+        hard: -1
   crawler:
     extends:
       file: docker-compose.yaml

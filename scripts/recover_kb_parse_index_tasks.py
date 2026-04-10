@@ -14,8 +14,10 @@
 
 import argparse
 import asyncio
+import fcntl
 import os
 from collections import Counter
+from contextlib import contextmanager
 from typing import Any
 
 import httpx
@@ -108,6 +110,25 @@ class RecoveryRunner:
 
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.token}"}
+
+    async def count_active_knowledge_tasks(self, limit: int = 100) -> int:
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+            resp = await client.get(
+                f"{API_BASE_URL}/api/tasks",
+                headers=self._headers(),
+                params={"limit": max(1, min(limit, 100))},
+            )
+        if resp.status_code != 200:
+            raise RuntimeError(f"获取任务列表失败: HTTP {resp.status_code}, {resp.text[:200]}")
+        data = resp.json() or {}
+        tasks = data.get("tasks") or []
+        active_statuses = {"pending", "running"}
+        return sum(
+            1
+            for task in tasks
+            if str(task.get("status") or "").lower() in active_statuses
+            and str(task.get("type") or "").startswith("knowledge_")
+        )
 
     async def list_db_ids(self) -> list[str]:
         if self.target_db_id:
@@ -276,7 +297,7 @@ class RecoveryRunner:
             "status_counter": status_counter,
         }
 
-    async def run(self):
+    async def run(self, *, skip_if_active_knowledge_tasks: bool, active_task_limit: int):
         print("=" * 68)
         print("知识库任务补跑工具（按文件状态补 parse/index）")
         print("=" * 68)
@@ -293,6 +314,16 @@ class RecoveryRunner:
 
         if not await self.login():
             return
+
+        if skip_if_active_knowledge_tasks:
+            try:
+                active_knowledge_tasks = await self.count_active_knowledge_tasks(limit=active_task_limit)
+            except Exception as exc:
+                print(f"❌ 查询当前任务状态失败: {exc}")
+                return
+            if active_knowledge_tasks > 0:
+                print(f"⏭️ 检测到活跃知识库任务 {active_knowledge_tasks} 个，跳过本次补跑")
+                return
 
         try:
             db_ids = await self.list_db_ids()
@@ -380,6 +411,23 @@ async def main():
         action="store_true",
         help="使用旧逻辑：分别提交 parse/index（默认关闭，默认走 reparse-index 一体）",
     )
+    parser.add_argument(
+        "--ignore-active-knowledge-tasks",
+        action="store_true",
+        help="忽略活跃知识库任务检测（默认检测到 pending/running 的 knowledge_* 任务会跳过）",
+    )
+    parser.add_argument(
+        "--active-task-limit",
+        type=int,
+        default=100,
+        help="任务检测接口拉取数量上限，默认 100",
+    )
+    parser.add_argument(
+        "--lock-file",
+        default="/tmp/yuxi_kb_recover.lock",
+        help="互斥锁文件路径，默认 /tmp/yuxi_kb_recover.lock",
+    )
+    parser.add_argument("--no-lock", action="store_true", help="关闭进程互斥锁（不推荐）")
     args = parser.parse_args()
 
     runner = RecoveryRunner(
@@ -391,7 +439,35 @@ async def main():
         qa_separator=args.qa_separator,
         use_reparse_index=not args.legacy_separate_submit,
     )
-    await runner.run()
+    @contextmanager
+    def single_instance_lock(path: str):
+        lock_fd = open(path, "w")
+        try:
+            fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            lock_fd.close()
+            raise RuntimeError(f"已有恢复脚本在运行（lock={path}）")
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
+            lock_fd.close()
+
+    if args.no_lock:
+        await runner.run(
+            skip_if_active_knowledge_tasks=not args.ignore_active_knowledge_tasks,
+            active_task_limit=args.active_task_limit,
+        )
+        return
+
+    try:
+        with single_instance_lock(args.lock_file):
+            await runner.run(
+                skip_if_active_knowledge_tasks=not args.ignore_active_knowledge_tasks,
+                active_task_limit=args.active_task_limit,
+            )
+    except RuntimeError as exc:
+        print(f"⏭️ {exc}")
 
 
 if __name__ == "__main__":
