@@ -304,12 +304,12 @@ services:
     environment:
       - REDIS_HOST=${LITELLM_REDIS_HOST:-app-redis}
       - REDIS_PORT=${LITELLM_REDIS_PORT:-6379}
-      - REDIS_PASSWORD=${LITELLM_REDIS_PASSWORD:-}
+      - REDIS_PASSWORD=${LITELLM_REDIS_PASSWORD:-sgccAppRedis@2026!Jz}
       - REDIS_DB=${LITELLM_REDIS_DB:-1}
     volumes:
       - ./docker/litellm.qwen35.yaml:/app/config.yaml:ro
-    ports:
-      - "8010:8010"
+    # ports:
+    #   - "8010:8010"
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8010/health/readiness')"]
       interval: 30s
@@ -368,8 +368,8 @@ services:
     volumes:
       - ${MODEL_DIR:-./models}:/models
       - ./docker/volumes/vllm/hf-cache:/root/.cache/huggingface
-    ports:
-      - "8000:8000"
+    # ports:
+    #   - "8000:8000"
     ipc: host
     ulimits:
       nofile:
@@ -422,8 +422,8 @@ services:
     volumes:
       - ${MODEL_DIR:-./models}:/models
       - ./docker/volumes/vllm/hf-cache:/root/.cache/huggingface
-    ports:
-      - "8001:8001"
+    # ports:
+    #   - "8001:8001"
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8001/health || exit 1"]
       interval: 30s
@@ -466,8 +466,8 @@ services:
     volumes:
       - ${MODEL_DIR:-./models}:/models
       - ./docker/volumes/vllm/hf-cache:/root/.cache/huggingface
-    ports:
-      - "8002:8002"
+    # ports:
+    #   - "8002:8002"
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8002/health || exit 1"]
       interval: 30s
@@ -496,8 +496,8 @@ services:
     volumes:
       - ./docker/volumes/paddlex:/paddlex
       - ${MODEL_DIR:-./models}/PaddleX:/root/.paddlex
-    ports:
-      - "8080:8080"
+    # ports:
+    #   - "8080:8080"
     environment:
       - CUDA_VISIBLE_DEVICES=
     command:

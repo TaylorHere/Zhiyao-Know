@@ -31,7 +31,7 @@ services:
       - YUXI_API_WORKERS=${YUXI_API_WORKERS:-1}
       - YUXI_TASK_WORKER_COUNT=${YUXI_TASK_WORKER_COUNT:-1}
       - YUXI_INDEX_CONCURRENCY=${YUXI_INDEX_CONCURRENCY:-1}
-      - YUXI_PROCESSING_QUEUE_REDIS_URL=${YUXI_PROCESSING_QUEUE_REDIS_URL:-redis://kb-queue-redis:6379/0}
+      - YUXI_PROCESSING_QUEUE_REDIS_URL=${YUXI_PROCESSING_QUEUE_REDIS_URL:-redis://:${KB_QUEUE_REDIS_PASSWORD:-sgccKbQueueRedis@2026!Jz}@kb-queue-redis:6379/0}
       - YUXI_PROCESSING_QUEUE_REDIS_TIMEOUT=${YUXI_PROCESSING_QUEUE_REDIS_TIMEOUT:-1.0}
       - YUXI_PROCESSING_STALE_SECONDS=${YUXI_PROCESSING_STALE_SECONDS:-600}
       - POSTGRES_URL=${POSTGRES_URL:-postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-yuxi_know}}
@@ -49,6 +49,8 @@ services:
       - MINERU_API_URI=${MINERU_API_URI:-http://mineru-api:30001}
       - PADDLEX_URI=${PADDLEX_URI:-http://paddlex:8080}
       - MINIO_URI=${MINIO_URI:-http://milvus-minio:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-sgccMinioAdmin2026}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-sgccMinioSecret@2026!Jz}
       - MODEL_DIR_IN_DOCKER=/models
       - RUNNING_IN_DOCKER=true
       - NO_PROXY=localhost,127.0.0.1,milvus,graph,milvus-minio,milvus-etcd-dev,etcd,minio,mineru,paddlex,api.siliconflow.cn
@@ -110,7 +112,7 @@ services:
       - NLTK_DATA=/app/nltk_data
       - HOST_IP=${HOST_IP:-}
       - YUXI_INDEX_CONCURRENCY=${YUXI_INDEX_CONCURRENCY:-1}
-      - YUXI_PROCESSING_QUEUE_REDIS_URL=${YUXI_PROCESSING_QUEUE_REDIS_URL:-redis://kb-queue-redis:6379/0}
+      - YUXI_PROCESSING_QUEUE_REDIS_URL=${YUXI_PROCESSING_QUEUE_REDIS_URL:-redis://:${KB_QUEUE_REDIS_PASSWORD:-sgccKbQueueRedis@2026!Jz}@kb-queue-redis:6379/0}
       - YUXI_PROCESSING_QUEUE_REDIS_TIMEOUT=${YUXI_PROCESSING_QUEUE_REDIS_TIMEOUT:-1.0}
       - YUXI_PROCESSING_STALE_SECONDS=${YUXI_PROCESSING_STALE_SECONDS:-600}
       - POSTGRES_URL=${POSTGRES_URL:-postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-yuxi_know}}
@@ -128,6 +130,8 @@ services:
       - MINERU_API_URI=${MINERU_API_URI:-http://mineru-api:30001}
       - PADDLEX_URI=${PADDLEX_URI:-http://paddlex:8080}
       - MINIO_URI=${MINIO_URI:-http://milvus-minio:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-sgccMinioAdmin2026}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-sgccMinioSecret@2026!Jz}
       - MODEL_DIR_IN_DOCKER=/models
       - RUNNING_IN_DOCKER=true
       - NO_PROXY=localhost,127.0.0.1,milvus,graph,milvus-minio,milvus-etcd-dev,etcd,minio,mineru,paddlex,api.siliconflow.cn
@@ -184,7 +188,7 @@ services:
       - YUXI_API_BASE_URL=${YUXI_API_BASE_URL:-http://api:5050}
       - YUXI_KB_RECOVER_CRON_ENABLED=${YUXI_KB_RECOVER_CRON_ENABLED:-true}
       - YUXI_KB_RECOVER_CRON_INTERVAL=${YUXI_KB_RECOVER_CRON_INTERVAL:-7200}
-      - YUXI_PROCESSING_QUEUE_REDIS_URL=${YUXI_PROCESSING_QUEUE_REDIS_URL:-redis://kb-queue-redis:6379/0}
+      - YUXI_PROCESSING_QUEUE_REDIS_URL=${YUXI_PROCESSING_QUEUE_REDIS_URL:-redis://:${KB_QUEUE_REDIS_PASSWORD:-sgccKbQueueRedis@2026!Jz}@kb-queue-redis:6379/0}
       - YUXI_PROCESSING_QUEUE_REDIS_TIMEOUT=${YUXI_PROCESSING_QUEUE_REDIS_TIMEOUT:-1.0}
       - YUXI_PROCESSING_STALE_SECONDS=${YUXI_PROCESSING_STALE_SECONDS:-600}
       - POSTGRES_URL=${POSTGRES_URL:-postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-yuxi_know}}
@@ -202,6 +206,8 @@ services:
       - MINERU_API_URI=${MINERU_API_URI:-http://mineru-api:30001}
       - PADDLEX_URI=${PADDLEX_URI:-http://paddlex:8080}
       - MINIO_URI=${MINIO_URI:-http://milvus-minio:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-sgccMinioAdmin2026}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-sgccMinioSecret@2026!Jz}
       - MODEL_DIR_IN_DOCKER=/models
       - RUNNING_IN_DOCKER=true
       - NO_PROXY=localhost,127.0.0.1,milvus,graph,milvus-minio,milvus-etcd-dev,etcd,minio,mineru,paddlex,api.siliconflow.cn
@@ -253,8 +259,8 @@ services:
     volumes:
       - ./crawler_service:/app
       - ./.env:/app/.env
-    ports:
-      - "18060:5060"
+    # ports:
+    #   - "18060:5060"
     networks:
       - app-network
     env_file:
@@ -263,7 +269,7 @@ services:
       - CRAWLER_DATABASE_URL=${CRAWLER_DATABASE_URL:-sqlite+aiosqlite:///./crawler.db}
       - CRAWLER_WORKER_CONCURRENCY=${CRAWLER_WORKER_CONCURRENCY:-2}
       - CRAWLER_USE_CELERY=${CRAWLER_USE_CELERY:-true}
-      - CRAWLER_REDIS_URL=${CRAWLER_REDIS_URL:-redis://app-redis:6379/0}
+      - CRAWLER_REDIS_URL=${CRAWLER_REDIS_URL:-redis://:${APP_REDIS_PASSWORD:-sgccAppRedis@2026!Jz}@app-redis:6379/0}
     command: uvicorn main:app --host 0.0.0.0 --port 5060 --reload
     ulimits:
       nofile:
@@ -301,7 +307,7 @@ services:
     environment:
       - CRAWLER_DATABASE_URL=${CRAWLER_DATABASE_URL:-sqlite+aiosqlite:///./crawler.db}
       - CRAWLER_USE_CELERY=${CRAWLER_USE_CELERY:-true}
-      - CRAWLER_REDIS_URL=${CRAWLER_REDIS_URL:-redis://app-redis:6379/0}
+      - CRAWLER_REDIS_URL=${CRAWLER_REDIS_URL:-redis://:${APP_REDIS_PASSWORD:-sgccAppRedis@2026!Jz}@app-redis:6379/0}
     command: celery -A core.celery_app.celery_app worker --loglevel=info --concurrency=2
     ulimits:
       nofile:
@@ -320,6 +326,7 @@ services:
   app-redis:
     image: redis:7-alpine
     container_name: app-redis
+    command: sh -c "exec redis-server --requirepass ${APP_REDIS_PASSWORD:-sgccAppRedis@2026!Jz}"
     networks:
       - app-network
     ulimits:
@@ -336,6 +343,7 @@ services:
   kb-queue-redis:
     image: redis:7-alpine
     container_name: kb-queue-redis
+    command: sh -c "exec redis-server --requirepass ${KB_QUEUE_REDIS_PASSWORD:-sgccKbQueueRedis@2026!Jz}"
     networks:
       - app-network
     ulimits:
@@ -354,7 +362,7 @@ services:
     container_name: redis-exporter
     environment:
       - REDIS_ADDR=redis://app-redis:6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-sgccAppRedis@2026!Jz}
     depends_on:
       app-redis:
         condition: service_started
@@ -385,8 +393,8 @@ services:
     volumes:
       - ./docker/prometheus/prometheus.app.yml:/etc/prometheus/prometheus.yml:ro
       - ./docker/volumes/prometheus:/prometheus
-    ports:
-      - "9090:9090"
+    # ports:
+    #   - "9090:9090"
     networks:
       - app-network
     ulimits:
@@ -431,9 +439,9 @@ services:
   graph:
     image: neo4j:5.26
     container_name: graph
-    ports:
-      - "7474:7474"
-      - "7687:7687"
+    # ports:
+    #   - "7474:7474"
+    #   - "7687:7687"
     volumes:
       - ./docker/volumes/neo4j/data:/data
       - ./docker/volumes/neo4j/logs:/var/lib/neo4j/logs
@@ -496,8 +504,8 @@ services:
     container_name: milvus-minio
     image: minio/minio:RELEASE.2023-03-20T20-16-18Z
     environment:
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-sgccMinioAdmin2026}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-sgccMinioSecret@2026!Jz}
       MINIO_PROMETHEUS_AUTH_TYPE: public
     volumes:
       - ./docker/volumes/milvus/minio:/minio_data
@@ -534,6 +542,8 @@ services:
     environment:
       ETCD_ENDPOINTS: etcd:2379
       MINIO_ADDRESS: minio:9000
+      MINIO_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY:-sgccMinioAdmin2026}
+      MINIO_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY:-sgccMinioSecret@2026!Jz}
       MILVUS_LOG_LEVEL: error
     volumes:
       - ./docker/volumes/milvus/milvus:/var/lib/milvus
@@ -544,9 +554,9 @@ services:
       start_period: 120s
       timeout: 30s
       retries: 5
-    ports:
-      - "19530:19530"
-      - "9091:9091"
+    # ports:
+    #   - "19530:19530"
+    #   - "9091:9091"
     depends_on:
       - "etcd"
       - "minio"
@@ -570,8 +580,8 @@ services:
       - postgres
       - -c
       - max_connections=${POSTGRES_MAX_CONNECTIONS:-4000}
-    ports:
-      - "5432:5432"
+    # ports:
+    #   - "5432:5432"
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
@@ -629,8 +639,8 @@ services:
       - all
     env_file:
       - .env
-    ports:
-      - 30000:30000
+    # ports:
+    #   - 30000:30000
     environment:
       MINERU_MODEL_SOURCE: local
     entrypoint: mineru-vllm-server
@@ -671,8 +681,8 @@ services:
       - all
     env_file:
       - .env
-    ports:
-      - 30001:30001
+    # ports:
+    #   - 30001:30001
     environment:
       MINERU_MODEL_SOURCE: local
     entrypoint: mineru-api
@@ -702,8 +712,8 @@ services:
     volumes:
       - ./docker/volumes/paddlex:/paddlex
       - ${MODEL_DIR:-./models}/PaddleX:/root/.paddlex
-    ports:
-      - "8080:8080"
+    # ports:
+    #   - "8080:8080"
     healthcheck:
       test: [ "CMD-SHELL", "curl -f http://localhost:8080/health || exit 1" ]
       interval: 20s
