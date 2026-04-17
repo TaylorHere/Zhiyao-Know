@@ -309,6 +309,8 @@ services:
       - /models/Qwen/Qwen3-Embedding-0.6B
       - --runner
       - pooling
+      - --tensor-parallel-size
+      - ${VLLM_EMBED_TP_SIZE:-2}
       - --served-model-name
       - Qwen3-Embedding-0.6B
       - --host
@@ -320,10 +322,14 @@ services:
       - --dtype
       - half
       - --gpu-memory-utilization
-      - ${VLLM_EMBED_GPU_MEMORY_UTILIZATION:-0.06}
+      - ${VLLM_EMBED_GPU_MEMORY_UTILIZATION:-0.12}
+      - --max-num-seqs
+      - ${VLLM_EMBED_MAX_NUM_SEQS:-32}
+      - --max-num-batched-tokens
+      - ${VLLM_EMBED_MAX_BATCHED_TOKENS:-32768}
       - --trust-remote-code
     environment:
-      - CUDA_VISIBLE_DEVICES=${VLLM_EMBED_GPU_DEVICE:-1}
+      - CUDA_VISIBLE_DEVICES=${VLLM_EMBED_GPU_DEVICES:-0,1}
     volumes:
       - ${MODEL_DIR:-./models}:/models
       - ./docker/volumes/vllm/hf-cache:/root/.cache/huggingface
@@ -350,7 +356,7 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              device_ids: ["${VLLM_EMBED_GPU_DEVICE:-1}"]
+              device_ids: ["0", "1"]
               capabilities: [gpu]
     shm_size: 8g
     ipc: host
