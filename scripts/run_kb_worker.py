@@ -217,7 +217,11 @@ async def _run_reparse_index(task_id: str, payload: dict[str, Any]) -> dict[str,
                 if status in processing_statuses:
                     return {"file_id": file_id, "status": "failed", "error": f"文件正在处理中: {status}"}
 
-                if status in parse_allowed_statuses:
+                # "重解析并入库" 的语义应保证先有最新 markdown：
+                # 1) 常规可解析状态（uploaded/error_parsing/failed）
+                # 2) 元数据异常：状态允许入库但 markdown_file 丢失
+                # 若不先解析，后续 index_file 会报 "no markdown_file"。
+                if status in parse_allowed_statuses or not file_meta.get("markdown_file"):
                     parsed_meta = _meta_of(await knowledge_base.parse_file(db_id, file_id, operator_id=operator_id))
                     status = parsed_meta.get("status")
 
