@@ -7,11 +7,7 @@ services:
     container_name: api-dev
     working_dir: /app
     volumes:
-      - ./server:/app/server
-      - ./src:/app/src
       - ./saves:/app/saves
-      - ./test:/app/test
-      - ./scripts:/app/scripts
       - ./.env:/app/.env
       - ${MODEL_DIR:-./models}:/models # 使用默认值处理未定义的环境变量
       - ./data/qa_datasets/:/app/saves/qa_datasets/
@@ -93,11 +89,7 @@ services:
     container_name: api-worker-dev
     working_dir: /app
     volumes:
-      - ./server:/app/server
-      - ./src:/app/src
       - ./saves:/app/saves
-      - ./test:/app/test
-      - ./scripts:/app/scripts
       - ./.env:/app/.env
       - ${MODEL_DIR:-./models}:/models
       - ./data/qa_datasets/:/app/saves/qa_datasets/
@@ -167,11 +159,7 @@ services:
     container_name: kb-recover-cron-dev
     working_dir: /app
     volumes:
-      - ./server:/app/server
-      - ./src:/app/src
       - ./saves:/app/saves
-      - ./test:/app/test
-      - ./scripts:/app/scripts
       - ./.env:/app/.env
       - ${MODEL_DIR:-./models}:/models
       - ./data/qa_datasets/:/app/saves/qa_datasets/
@@ -257,7 +245,6 @@ services:
     container_name: crawler-dev
     working_dir: /app
     volumes:
-      - ./crawler_service:/app
       - ./.env:/app/.env
     # ports:
     #   - "18060:5060"
@@ -298,7 +285,6 @@ services:
     container_name: crawler-worker-dev
     working_dir: /app
     volumes:
-      - ./crawler_service:/app
       - ./.env:/app/.env
     networks:
       - app-network

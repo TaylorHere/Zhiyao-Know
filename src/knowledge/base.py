@@ -249,6 +249,10 @@ class KnowledgeBase(ABC):
         allowed_statuses = {
             FileStatus.UPLOADED,
             FileStatus.ERROR_PARSING,
+            FileStatus.PARSED,
+            FileStatus.ERROR_INDEXING,
+            FileStatus.INDEXED,
+            FileStatus.DONE,
             "failed",  # Legacy status
         }
 
@@ -292,7 +296,7 @@ class KnowledgeBase(ABC):
 
         try:
             # Determine processing function based on content type
-            content_type = file_meta.get("processing_params", {}).get("content_type", "file")
+            content_type = (file_meta.get("processing_params") or {}).get("content_type", "file")
 
             if content_type == "url":
                 from src.knowledge.indexing import process_url_to_markdown

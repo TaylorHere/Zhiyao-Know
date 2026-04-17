@@ -228,8 +228,8 @@ class MinIOClient:
             return True
 
         except S3Error as e:
-            if "NoSuchKey" in str(e):
-                logger.warning(f"要删除的对象 '{object_name}' 不存在")
+            if "NoSuchKey" in str(e) or "NoSuchBucket" in str(e):
+                logger.info(f"要删除的对象 '{object_name}' 或存储桶不存在，跳过")
                 return False
             raise StorageError(f"删除文件失败: {e}")
 

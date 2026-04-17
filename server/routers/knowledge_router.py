@@ -685,13 +685,19 @@ async def delete_document(db_id: str, doc_id: str, current_user: User = Depends(
 
         file_name = file_meta_info.get("meta", {}).get("filename")
 
-        # 尝试从MinIO删除文件，如果失败（例如旧知识库没有MinIO实例），则忽略
-        try:
-            minio_client = get_minio_client()
-            await minio_client.adelete_file("ref-" + db_id.replace("_", "-"), file_name)
-            logger.debug(f"成功从MinIO删除文件: {file_name}")
-        except Exception as minio_error:
-            logger.warning(f"从MinIO删除文件失败（可能是旧知识库）: {minio_error}")
+        # 尝试从MinIO删除文件，如果对象/桶不存在（历史数据）则忽略
+        if file_name:
+            try:
+                minio_client = get_minio_client()
+                await minio_client.adelete_file("ref-" + db_id.replace("_", "-"), file_name)
+                logger.debug(f"成功从MinIO删除文件: {file_name}")
+            except StorageError as minio_error:
+                if "NoSuchBucket" in str(minio_error) or "NoSuchKey" in str(minio_error):
+                    logger.info(f"MinIO对象或桶不存在，跳过删除: {file_name}")
+                else:
+                    logger.warning(f"从MinIO删除文件失败（可能是旧知识库）: {minio_error}")
+            except Exception as minio_error:
+                logger.warning(f"从MinIO删除文件失败（可能是旧知识库）: {minio_error}")
 
         # 无论MinIO删除是否成功，都继续从知识库删除
         await knowledge_base.delete_file(db_id, doc_id)

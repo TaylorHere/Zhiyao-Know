@@ -77,3 +77,4 @@ RUN echo 'export PATH="/app/.venv/bin:$PATH"' >> /root/.bashrc
 # 复制代码到容器中
 COPY ../src /app/src
 COPY ../server /app/server
+COPY ../scripts /app/scripts
