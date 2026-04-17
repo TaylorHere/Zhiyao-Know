@@ -421,7 +421,25 @@ class KnowledgeBase(ABC):
         await asyncio.to_thread(minio_client.ensure_bucket_exists, bucket_name)
 
         object_name = f"{db_id}/{file_id}/parsed.md"
-        data = content.encode("utf-8")
+        try:
+            data = content.encode("utf-8")
+        except UnicodeEncodeError:
+            sanitized_chars = []
+            surrogate_count = 0
+            for ch in content:
+                code_point = ord(ch)
+                if 0xD800 <= code_point <= 0xDFFF:
+                    sanitized_chars.append("�")
+                    surrogate_count += 1
+                else:
+                    sanitized_chars.append(ch)
+
+            sanitized_content = "".join(sanitized_chars)
+            data = sanitized_content.encode("utf-8")
+            logger.warning(
+                f"Detected {surrogate_count} invalid surrogate chars while saving markdown, "
+                f"file_id={file_id}. Replaced with U+FFFD."
+            )
 
         # Return standard HTTP URL from UploadResult
         upload_result = await minio_client.aupload_file(
